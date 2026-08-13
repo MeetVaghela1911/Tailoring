@@ -26,6 +26,18 @@ class TemplateLocalDataSourceImpl implements TemplateLocalDataSource {
   Future<List<TemplateModel>> getTemplates() async {
     try {
       final templates = await localDb.isar.templateLocalModels.where().findAll();
+      
+      // Auto-heal any corrupted legacy records with empty remoteId
+      final corrupted = templates.where((t) => t.remoteId.trim().isEmpty).toList();
+      if (corrupted.isNotEmpty) {
+        await localDb.isar.writeTxn(() async {
+          for (final t in corrupted) {
+            t.remoteId = _uuid.v4();
+            await localDb.isar.templateLocalModels.put(t);
+          }
+        });
+      }
+
       return templates.map(_toTemplateModel).toList();
     } catch (e) {
       throw CacheException('Failed to fetch templates from local database: $e');
@@ -66,6 +78,9 @@ class TemplateLocalDataSourceImpl implements TemplateLocalDataSource {
 
   @override
   Future<TemplateModel> updateTemplate(TemplateModel template) async {
+    if (template.id.trim().isEmpty) {
+      throw Exception('Cannot update template with empty ID');
+    }
     final existingLocal = await localDb.isar.templateLocalModels.filter().remoteIdEqualTo(template.id).findFirst();
     
     if (existingLocal == null) {
@@ -95,6 +110,7 @@ class TemplateLocalDataSourceImpl implements TemplateLocalDataSource {
 
   @override
   Future<void> deleteTemplate(String id) async {
+    if (id.trim().isEmpty) return;
     try {
       await localDb.isar.writeTxn(() async {
         await localDb.isar.templateLocalModels.filter().remoteIdEqualTo(id).deleteAll();

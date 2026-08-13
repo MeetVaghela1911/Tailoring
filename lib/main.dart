@@ -8,13 +8,14 @@ import 'features/customers/presentation/bloc/customer_bloc.dart';
 import 'features/templates/presentation/bloc/template_bloc.dart';
 import 'features/orders/presentation/bloc/order_bloc.dart';
 import 'features/onboarding/presentation/bloc/walkthrough_cubit.dart';
-import 'package:showcaseview/showcaseview.dart';
 
 import 'core/locale/locale_provider.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utility/dependency_injection.dart';
 import 'features/auth/bloc/auth_bloc.dart';
 import 'routes/app_router.dart';
+
+import 'core/widgets/app_showcase_wrapper.dart';
 
 /// Global locale provider — accessible from any screen.
 final LocaleProvider appLocaleProvider = LocaleProvider();
@@ -42,7 +43,9 @@ class StitchApp extends StatelessWidget {
         BlocProvider<CustomerBloc>(create: (_) => getIt<CustomerBloc>()),
         BlocProvider<TemplateBloc>(create: (_) => getIt<TemplateBloc>()),
         BlocProvider<OrderBloc>(create: (_) => getIt<OrderBloc>()),
-        BlocProvider<WalkthroughCubit>(create: (_) => getIt<WalkthroughCubit>()),
+        BlocProvider<WalkthroughCubit>(
+          create: (_) => getIt<WalkthroughCubit>(),
+        ),
       ],
       child: AnimatedBuilder(
         animation: appLocaleProvider,
@@ -59,9 +62,13 @@ class StitchApp extends StatelessWidget {
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
             builder: (context, child) {
-              // ignore: deprecated_member_use
-              return ShowCaseWidget(
-                builder: (context) => child!,
+              if (child == null) return const SizedBox.shrink();
+              return GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                },
+                child: AppShowcaseWrapper(child: child),
               );
             },
           );

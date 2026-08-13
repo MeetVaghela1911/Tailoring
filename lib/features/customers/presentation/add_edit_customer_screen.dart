@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:uuid/uuid.dart';
+
 import '../../../core/utils/snackbar_utils.dart';
 
 import '../../../core/service/storage_service.dart';
@@ -21,6 +23,8 @@ import 'bloc/customer_state.dart';
 import 'package:showcaseview/showcaseview.dart';
 import '../../onboarding/presentation/utils/walkthrough_keys.dart';
 import '../../onboarding/presentation/bloc/walkthrough_cubit.dart';
+import '../../orders/presentation/bloc/order_bloc.dart';
+import '../../orders/presentation/bloc/order_event.dart';
 
 class AddEditCustomerScreen extends StatefulWidget {
   final Customer? customer;
@@ -103,7 +107,7 @@ class _AddEditCustomerScreenState extends State<AddEditCustomerScreen> {
       }
 
       final customer = Customer(
-        id: _isEditing ? widget.customer!.id : '',
+        id: _isEditing ? widget.customer!.id : const Uuid().v4(),
         name: _nameCtrl.text.trim(),
         phoneNumber: _phoneCtrl.text.trim(),
         email: _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
@@ -152,8 +156,14 @@ class _AddEditCustomerScreenState extends State<AddEditCustomerScreen> {
           final l10n = AppLocalizations.of(context);
           String message = 'Operation successful';
           if (state is CustomerAddSuccess) message = l10n.customerAdded;
-          if (state is CustomerUpdateSuccess) message = l10n.customerUpdated;
-          if (state is CustomerDeleteSuccess) message = l10n.customerDeleted;
+          if (state is CustomerUpdateSuccess) {
+            message = l10n.customerUpdated;
+            context.read<OrderBloc>().add(LoadOrders());
+          }
+          if (state is CustomerDeleteSuccess) {
+            message = l10n.customerDeleted;
+            context.read<OrderBloc>().add(LoadOrders());
+          }
           
           showAppSnackBar(context, message: message);
           context.pop(true);

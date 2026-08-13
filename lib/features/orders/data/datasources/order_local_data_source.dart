@@ -5,6 +5,7 @@ import '../../../../core/database/local_database.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/order_local_model.dart';
 import '../models/order_model.dart';
+import '../../../customers/data/models/customer_local_model.dart';
 
 abstract class OrderLocalDataSource {
   Future<List<OrderModel>> getOrders();
@@ -24,11 +25,33 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
 
   OrderLocalDataSourceImpl({required this.localDb});
 
+  Future<Map<String, CustomerLocalModel>> _getCustomersMap() async {
+    try {
+      final customers = await localDb.isar.customerLocalModels.where().findAll();
+      return {for (var c in customers) c.remoteId: c};
+    } catch (_) {
+      return {};
+    }
+  }
+
   @override
   Future<List<OrderModel>> getOrders() async {
     try {
       final orders = await localDb.isar.orderLocalModels.where().findAll();
-      return orders.map(_toOrderModel).toList();
+      
+      // Auto-heal any corrupted legacy records with empty remoteId
+      final corrupted = orders.where((o) => o.remoteId.trim().isEmpty).toList();
+      if (corrupted.isNotEmpty) {
+        await localDb.isar.writeTxn(() async {
+          for (final o in corrupted) {
+            o.remoteId = _uuid.v4();
+            await localDb.isar.orderLocalModels.put(o);
+          }
+        });
+      }
+
+      final customersMap = await _getCustomersMap();
+      return orders.map((o) => _toOrderModel(o, customersMap)).toList();
     } catch (e) {
       throw CacheException('Failed to fetch orders from local database: $e');
     }
@@ -36,26 +59,44 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
   
   @override
   Future<OrderModel?> getOrderById(String id) async {
+    if (id.trim().isEmpty) return null;
     final order = await localDb.isar.orderLocalModels.filter().remoteIdEqualTo(id).findFirst();
     if (order == null) return null;
-    return _toOrderModel(order);
+    final customersMap = await _getCustomersMap();
+    return _toOrderModel(order, customersMap);
   }
 
   @override
   Future<List<OrderModel>> getOrdersByCustomer(String customerId) async {
+    if (customerId.trim().isEmpty) return [];
     final orders = await localDb.isar.orderLocalModels.filter().customerIdEqualTo(customerId).findAll();
-    return orders.map(_toOrderModel).toList();
+    final customersMap = await _getCustomersMap();
+    return orders.map((o) => _toOrderModel(o, customersMap)).toList();
   }
 
   @override
   Future<OrderModel> addOrder(OrderModel order) async {
     final String remoteId = order.id.isEmpty ? _uuid.v4() : order.id;
 
+    String? custName = order.customerName;
+    String? custPhone = order.customerPhone;
+
+    if (order.customerId != null && order.customerId!.isNotEmpty) {
+      final cust = await localDb.isar.customerLocalModels
+          .filter()
+          .remoteIdEqualTo(order.customerId!)
+          .findFirst();
+      if (cust != null) {
+        custName = cust.name;
+        custPhone = cust.phoneNumber;
+      }
+    }
+
     final localModel = OrderLocalModel()
       ..remoteId = remoteId
       ..customerId = order.customerId
-      ..customerName = order.customerName
-      ..customerPhone = order.customerPhone
+      ..customerName = custName
+      ..customerPhone = custPhone
       ..garmentTypes = order.garmentTypes
       ..specialInstructions = order.specialInstructions
       ..referenceImagePath = order.referenceImagePath
@@ -83,21 +124,39 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
       throw CacheException('Failed to add order to local database: $e');
     }
 
-    return _toOrderModel(localModel);
+    final customersMap = await _getCustomersMap();
+    return _toOrderModel(localModel, customersMap);
   }
 
   @override
   Future<OrderModel> updateOrder(OrderModel order) async {
+    if (order.id.trim().isEmpty) {
+      throw Exception('Cannot update order with empty ID');
+    }
     final existingLocal = await localDb.isar.orderLocalModels.filter().remoteIdEqualTo(order.id).findFirst();
     
     if (existingLocal == null) {
       throw Exception('Order not found in local database');
     }
 
+    String? custName = order.customerName;
+    String? custPhone = order.customerPhone;
+
+    if (order.customerId != null && order.customerId!.isNotEmpty) {
+      final cust = await localDb.isar.customerLocalModels
+          .filter()
+          .remoteIdEqualTo(order.customerId!)
+          .findFirst();
+      if (cust != null) {
+        custName = cust.name;
+        custPhone = cust.phoneNumber;
+      }
+    }
+
     existingLocal
       ..customerId = order.customerId
-      ..customerName = order.customerName
-      ..customerPhone = order.customerPhone
+      ..customerName = custName
+      ..customerPhone = custPhone
       ..garmentTypes = order.garmentTypes
       ..specialInstructions = order.specialInstructions
       ..referenceImagePath = order.referenceImagePath
@@ -124,11 +183,13 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
       throw CacheException('Failed to update order in local database: $e');
     }
 
-    return _toOrderModel(existingLocal);
+    final customersMap = await _getCustomersMap();
+    return _toOrderModel(existingLocal, customersMap);
   }
 
   @override
   Future<void> deleteOrder(String id) async {
+    if (id.trim().isEmpty) return;
     try {
       await localDb.isar.writeTxn(() async {
         await localDb.isar.orderLocalModels.filter().remoteIdEqualTo(id).deleteAll();
@@ -154,7 +215,18 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
     }
   }
 
-  OrderModel _toOrderModel(OrderLocalModel local) {
+  OrderModel _toOrderModel(OrderLocalModel local, [Map<String, CustomerLocalModel>? customersMap]) {
+    String? resolvedName = local.customerName;
+    String? resolvedPhone = local.customerPhone;
+
+    if (local.customerId != null && local.customerId!.isNotEmpty && customersMap != null) {
+      final customer = customersMap[local.customerId!];
+      if (customer != null) {
+        resolvedName = customer.name;
+        resolvedPhone = customer.phoneNumber;
+      }
+    }
+
     Map<String, String> parsedMeasurements = {};
     Map<String, int> parsedQuantities = {};
     try {
@@ -176,8 +248,8 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
       return OrderModel(
         id: local.remoteId,
         customerId: local.customerId,
-        customerName: local.customerName,
-        customerPhone: local.customerPhone,
+        customerName: resolvedName,
+        customerPhone: resolvedPhone,
         garmentTypes: local.garmentTypes,
         garmentQuantities: parsedQuantities,
         garmentPrices: parsedPrices,
@@ -200,8 +272,8 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
       return OrderModel(
         id: local.remoteId,
         customerId: local.customerId,
-        customerName: local.customerName,
-        customerPhone: local.customerPhone,
+        customerName: resolvedName,
+        customerPhone: resolvedPhone,
         garmentTypes: local.garmentTypes,
         garmentQuantities: {},
         garmentPrices: {},

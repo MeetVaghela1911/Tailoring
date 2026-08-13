@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../routes/app_router.dart';
 import '../../templates/presentation/bloc/template_bloc.dart';
 import '../../templates/presentation/bloc/template_state.dart';
+import '../../templates/domain/entities/template.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/common_methods.dart';
@@ -130,8 +131,15 @@ class _TakeMeasurementsScreenState extends State<TakeMeasurementsScreen>
       // If not in standard measurements, check custom templates
       if (fields.isEmpty && templateState is TemplatesLoaded) {
         final template = templateState.templates.firstWhere(
-          (t) => t.name == garment,
-          orElse: () => throw Exception('Template not found: $garment'),
+          (t) => t.name == garment || t.id == garment,
+          orElse: () => Template(
+            id: garment,
+            name: garment,
+            category: 'Other',
+            iconCodePoint: 0,
+            fields: const [],
+            basePrice: 0.0,
+          ),
         );
         fields = template.fields
             .map((f) => _MeasurementField(f, Icons.straighten))
@@ -789,11 +797,16 @@ class _TakeMeasurementsScreenState extends State<TakeMeasurementsScreen>
                     fontWeight: FontWeight.bold,
                     color: c.textDark,
                   ),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.zero,
                     isDense: true,
                     hintText: '0.0',
+                    hintStyle: GoogleFonts.poppins(
+                      fontSize: 22,
+                      fontWeight: FontWeight.normal,
+                      color: c.gray,
+                    ),
                   ),
                 ),
               ),
@@ -848,11 +861,16 @@ class _TakeMeasurementsScreenState extends State<TakeMeasurementsScreen>
                   fontWeight: FontWeight.bold,
                   color: c.textDark,
                 ),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
                   isDense: true,
                   hintText: '0.0',
+                  hintStyle: GoogleFonts.poppins(
+                    fontSize: 20,
+                    fontWeight: FontWeight.normal,
+                    color: c.gray,
+                  ),
                 ),
               ),
             ),

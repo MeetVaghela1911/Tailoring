@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:showcaseview/showcaseview.dart';
 import '../../../core/services/analytics_service.dart';
+import '../../../core/services/notification_service.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/common_methods.dart';
@@ -30,6 +31,7 @@ import '../../customers/presentation/bloc/customer_event.dart';
 import '../../templates/presentation/bloc/template_event.dart';
 import '../../onboarding/presentation/bloc/walkthrough_cubit.dart';
 import '../../onboarding/presentation/utils/walkthrough_keys.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -65,8 +67,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final tabNames = [
       'home_overview',
       'home_orders',
-      'home_templates',
       'home_customers',
+      'home_templates',
       'home_settings',
     ];
     if (index < tabNames.length) {
@@ -84,7 +86,9 @@ class _HomeScreenState extends State<HomeScreen> {
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
         systemNavigationBarColor: isDark ? c.cardDark : Colors.white,
-        systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        systemNavigationBarIconBrightness: isDark
+            ? Brightness.light
+            : Brightness.dark,
       ),
     );
 
@@ -122,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
               if (state is OrdersLoaded) {
                 _ordersCount = state.orders.length;
                 _triggerWalkthroughCheck();
+                NotificationService().evaluateAndNotifyOrders(state.orders);
               }
             },
           ),
@@ -135,7 +140,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     _bottomNavIndex = 0;
                   });
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    ShowcaseView.get().startShowCase([WalkthroughKeys.homeAddCustomerFab]);
+                    ShowcaseView.get().startShowCase([
+                      WalkthroughKeys.homeAddCustomerFab,
+                    ]);
                   });
                 }
               } else if (state is WalkthroughStepCreateTemplate) {
@@ -143,9 +150,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (_bottomNavIndex == 0) {
                     if (!cubit.isTemplateTabShown) {
                       cubit.markTemplateTabShown();
-                      ShowcaseView.get().startShowCase([WalkthroughKeys.bottomNavTemplates]);
+                      ShowcaseView.get().startShowCase([
+                        WalkthroughKeys.bottomNavTemplates,
+                      ]);
                     }
-                  } else if (_bottomNavIndex == 2) {
+                  } else if (_bottomNavIndex == 3) {
                     if (!cubit.isTemplateScreenShown) {
                       cubit.markTemplateScreenShown();
                       ShowcaseView.get().startShowCase([
@@ -160,12 +169,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (_bottomNavIndex == 1) {
                     if (!cubit.isOrderScreenShown) {
                       cubit.markOrderScreenShown();
-                      ShowcaseView.get().startShowCase([WalkthroughKeys.ordersAddButton]);
+                      ShowcaseView.get().startShowCase([
+                        WalkthroughKeys.ordersAddButton,
+                      ]);
                     }
                   } else {
                     if (!cubit.isOrderTabShown) {
                       cubit.markOrderTabShown();
-                      ShowcaseView.get().startShowCase([WalkthroughKeys.bottomNavOrders]);
+                      ShowcaseView.get().startShowCase([
+                        WalkthroughKeys.bottomNavOrders,
+                      ]);
                     }
                   }
                 });
@@ -187,8 +200,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         initialStatusFilter: _ordersStatusFilter,
                         isActive: _bottomNavIndex == 1,
                       ),
-                      const TemplatesScreen(),
                       const CustomersListScreen(),
+                      const TemplatesScreen(),
                       const SettingsScreen(),
                     ],
                   ),
@@ -215,12 +228,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return Stack(
       children: [
         Positioned(
-          top: 0, left: 0, right: 0,
+          top: 0,
+          left: 0,
+          right: 0,
           height: MediaQuery.of(context).size.height * 0.45,
           child: Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [topGradientColor, midGradientColor, c.background.withValues(alpha: 0.0)],
+                colors: [
+                  topGradientColor,
+                  midGradientColor,
+                  c.background.withValues(alpha: 0.0),
+                ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
@@ -228,27 +247,62 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            children: [
-              _buildHeaderInfo(c),
-              const SizedBox(height: 32),
-              Text(
-                l10n.overview,
-                style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: c.textDark),
-              ),
-              const SizedBox(height: 16),
-              BlocBuilder<OrderBloc, OrderState>(
-                builder: (context, state) {
-                  if (state is OrdersLoaded) {
-                    return _buildOverviewGrid(c, state.orders);
-                  }
-                  return _buildOverviewGrid(c, []); // Empty/Loading fallback
-                },
-              ),
-              const SizedBox(height: 36),
-              _buildQuickActions(c),
-            ],
+          child: RefreshIndicator(
+            color: c.colorPrimary,
+            onRefresh: () async {
+              final orderBloc = context.read<OrderBloc>();
+              final customerBloc = context.read<CustomerBloc>();
+              final templateBloc = context.read<TemplateBloc>();
+
+              orderBloc.add(LoadOrders());
+              customerBloc.add(LoadCustomers());
+              templateBloc.add(LoadTemplates());
+
+              await Future.wait([
+                orderBloc.stream.firstWhere(
+                  (s) => s is OrdersLoaded || s is OrderError,
+                ),
+                customerBloc.stream.firstWhere(
+                  (s) => s is CustomersLoaded || s is CustomerError,
+                ),
+                templateBloc.stream.firstWhere(
+                  (s) => s is TemplatesLoaded || s is TemplateError,
+                ),
+              ]);
+            },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              children: [
+                _buildHeaderInfo(c),
+                // const SizedBox(height: 32),
+                Text(
+                  l10n.overview,
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: c.textDark,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                BlocBuilder<OrderBloc, OrderState>(
+                  builder: (context, state) {
+                    if (state is OrdersLoaded) {
+                      return Column(
+                        children: [
+                          _buildOverviewGrid(c, state.orders),
+                          const SizedBox(height: 20),
+                          _buildAttentionBanner(c, state.orders),
+                        ],
+                      );
+                    }
+                    return _buildOverviewGrid(c, []); // Empty/Loading fallback
+                  },
+                ),
+                const SizedBox(height: 24),
+                _buildQuickActions(c),
+              ],
+            ),
           ),
         ),
       ],
@@ -262,7 +316,12 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Text(
           l10n.ownerDashboard.toUpperCase(),
-          style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2, color: c.textDark.withValues(alpha: 0.6)),
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: c.textDark.withValues(alpha: 0.6),
+          ),
         ),
         const SizedBox(height: 8),
         BlocBuilder<AuthBloc, AuthState>(
@@ -277,23 +336,144 @@ class _HomeScreenState extends State<HomeScreen> {
             }
             return Text(
               '${l10n.welcome},\n$userName',
-              style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.bold, color: c.textDark, height: 1.2),
+              style: GoogleFonts.poppins(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: c.textDark,
+                height: 1.2,
+              ),
             );
           },
         ),
         const SizedBox(height: 16),
         Row(
           children: [
-            Container(
-              width: 8, height: 8,
-              decoration: BoxDecoration(color: c.green, shape: BoxShape.circle, boxShadow: [BoxShadow(color: c.green.withValues(alpha: 0.4), blurRadius: 4)]),
-            ),
-            const SizedBox(width: 8),
-            Text(l10n.shopCurrentlyOpen, style: GoogleFonts.poppins(fontSize: 13, color: c.textDark.withValues(alpha: 0.7))),
-            Text(' ${l10n.open}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold, color: c.textDark)),
+            // Container(
+            //   width: 8,
+            //   height: 8,
+            //   decoration: BoxDecoration(
+            //     color: c.green,
+            //     shape: BoxShape.circle,
+            //     boxShadow: [
+            //       BoxShadow(
+            //         color: c.green.withValues(alpha: 0.4),
+            //         blurRadius: 4,
+            //       ),
+            //     ],
+            //   ),
+            // ),
+            // const SizedBox(width: 8),
+            // Text(l10n.shopCurrentlyOpen, style: GoogleFonts.poppins(fontSize: 13, color: c.textDark.withValues(alpha: 0.7))),
+            // Text(' ${l10n.open}', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold, color: c.textDark)),
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildAttentionBanner(AppColorScheme c, List<OrderEntity> orders) {
+    final now = DateTime.now();
+
+    final pendingPayments = orders.where((o) => o.status == 'DELIVERED' && o.balanceDue > 0).toList();
+    final overdueOrders = orders.where((o) => o.status != 'DELIVERED' && o.deliveryDate != null && now.isAfter(o.deliveryDate!)).toList();
+    final notStartedHalfway = orders.where((o) {
+      if (o.status != 'NOT STARTED' || o.deliveryDate == null) return false;
+      final total = o.deliveryDate!.difference(o.createdAt).inHours;
+      final elapsed = now.difference(o.createdAt).inHours;
+      return total > 0 && elapsed >= (total / 2);
+    }).toList();
+
+    final totalAttentionCount = pendingPayments.length + overdueOrders.length + notStartedHalfway.length;
+
+    if (totalAttentionCount == 0) return const SizedBox.shrink();
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _bottomNavIndex = 1; // Switch to Orders tab
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? c.cardDark : Colors.amber.shade50.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.6), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.amber.shade700.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.notifications_active_outlined, color: Colors.amber.shade900, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'NEEDS ATTENTION',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.8,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade800,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$totalAttentionCount',
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    pendingPayments.isNotEmpty
+                        ? '${pendingPayments.length} delivered order(s) have pending payment'
+                        : overdueOrders.isNotEmpty
+                            ? '${overdueOrders.length} order(s) are overdue'
+                            : '${notStartedHalfway.length} order(s) halfway to due date & not started',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.5,
+                      color: c.textDark,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: c.gray, size: 20),
+          ],
+        ),
+      ),
     );
   }
 
@@ -308,13 +488,29 @@ class _HomeScreenState extends State<HomeScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final l10n = AppLocalizations.of(context);
-    
-    final todayDeliveries = orders.where((o) => o.deliveryDate != null && 
-        DateTime(o.deliveryDate!.year, o.deliveryDate!.month, o.deliveryDate!.day) == today).length;
-    
-    final overdue = orders.where((o) => o.status != 'COMPLETED' && o.deliveryDate != null && 
-        o.deliveryDate!.isBefore(today)).length;
-    
+
+    final todayDeliveries = orders
+        .where(
+          (o) =>
+              o.deliveryDate != null &&
+              DateTime(
+                    o.deliveryDate!.year,
+                    o.deliveryDate!.month,
+                    o.deliveryDate!.day,
+                  ) ==
+                  today,
+        )
+        .length;
+
+    final overdue = orders
+        .where(
+          (o) =>
+              o.status != 'COMPLETED' &&
+              o.deliveryDate != null &&
+              o.deliveryDate!.isBefore(today),
+        )
+        .length;
+
     final inProgress = orders.where((o) => o.status == 'IN PROGRESS').length;
 
     return IntrinsicHeight(
@@ -387,7 +583,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _overviewCard(AppColorScheme c, {required Color iconBg, required Color iconColor, required IconData icon, required String title, required String value, Color? valueColor, String? badgeText, Color? badgeColor, VoidCallback? onTap, GlobalKey? showcaseKey, String? showcaseDesc}) {
+  Widget _overviewCard(
+    AppColorScheme c, {
+    required Color iconBg,
+    required Color iconColor,
+    required IconData icon,
+    required String title,
+    required String value,
+    Color? valueColor,
+    String? badgeText,
+    Color? badgeColor,
+    VoidCallback? onTap,
+    GlobalKey? showcaseKey,
+    String? showcaseDesc,
+  }) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Widget card = GestureDetector(
       onTap: onTap,
@@ -398,7 +607,13 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: isDark ? c.cardDark : c.white,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 15, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 15,
+              offset: const Offset(0, 4),
+            ),
+          ],
           border: Border.all(color: c.divider.withValues(alpha: 0.5)),
         ),
         child: Column(
@@ -410,17 +625,41 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Icon(icon, color: iconColor, size: 20),
                 ),
                 if (badgeText != null)
-                  Text(badgeText, style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.bold, color: badgeColor)),
+                  Text(
+                    badgeText,
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: badgeColor,
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
-            Text(title, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w500, color: c.textDark.withValues(alpha: 0.6))),
+            Text(
+              title,
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: c.textDark.withValues(alpha: 0.6),
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(value, style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.bold, color: valueColor ?? c.textDark)),
+            Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: valueColor ?? c.textDark,
+              ),
+            ),
           ],
         ),
       ),
@@ -448,16 +687,20 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Text(
           l10n.quickActions,
-          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: c.textDark),
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: c.textDark,
+          ),
         ),
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
             _actionButton(
-              c, 
-              Icons.add, 
-              l10n.newOrder, 
+              c,
+              Icons.add,
+              l10n.newOrder,
               () {
                 getIt<OrderWizardBloc>().add(const StartOrderWizard());
                 context.push(AppRoutes.createOrder);
@@ -467,9 +710,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(width: 16),
             _actionButton(
-              c, 
-              Icons.person_add_alt, 
-              l10n.addCust, 
+              c,
+              Icons.person_add_alt,
+              l10n.addCust,
               () => context.push(AppRoutes.addCustomer),
               showcaseKey: WalkthroughKeys.homeAddCustomerFab,
               showcaseDesc: l10n.walkthroughAddCustFab,
@@ -480,20 +723,39 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _actionButton(AppColorScheme c, IconData icon, String label, VoidCallback onTap, {GlobalKey? showcaseKey, String? showcaseDesc}) {
+  Widget _actionButton(
+    AppColorScheme c,
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    GlobalKey? showcaseKey,
+    String? showcaseDesc,
+  }) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     bool isPrimary = icon == Icons.add;
-    
+
     Widget btn = GestureDetector(
       onTap: onTap,
       child: Container(
         width: MediaQuery.of(context).size.width * 0.26,
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
         decoration: BoxDecoration(
-          color: isPrimary ? c.colorPrimary : (isDark ? c.cardDark : Colors.white),
+          color: isPrimary
+              ? c.colorPrimary
+              : (isDark ? c.cardDark : Colors.white),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 15, offset: const Offset(0, 4))],
-          border: Border.all(color: isPrimary ? c.colorPrimary : c.divider.withValues(alpha: 0.5)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 15,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(
+            color: isPrimary
+                ? c.colorPrimary
+                : c.divider.withValues(alpha: 0.5),
+          ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -501,13 +763,28 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isPrimary ? Colors.white.withValues(alpha: 0.25) : c.colorPrimary.withValues(alpha: 0.1),
+                color: isPrimary
+                    ? Colors.white.withValues(alpha: 0.25)
+                    : c.colorPrimary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: isPrimary ? Colors.white : c.colorPrimary, size: 24),
+              child: Icon(
+                icon,
+                color: isPrimary ? Colors.white : c.colorPrimary,
+                size: 24,
+              ),
             ),
             const SizedBox(height: 12),
-            Text(label, style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: isPrimary ? Colors.white : c.textDark), textAlign: TextAlign.center, maxLines: 1),
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isPrimary ? Colors.white : c.textDark,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+            ),
           ],
         ),
       ),
@@ -534,7 +811,13 @@ class _HomeScreenState extends State<HomeScreen> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: isDark ? c.cardDark : Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, -4))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
       ),
       child: SafeArea(
         bottom: true,
@@ -543,19 +826,40 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _navItem(c, 0, Icons.home_filled, AppLocalizations.of(context).home),
               _navItem(
-                c, 1, Icons.receipt_long_outlined, l10n.orders,
+                c,
+                0,
+                Icons.home_filled,
+                AppLocalizations.of(context).home,
+              ),
+              _navItem(
+                c,
+                1,
+                Icons.receipt_long_outlined,
+                l10n.orders,
                 showcaseKey: WalkthroughKeys.bottomNavOrders,
                 showcaseDesc: l10n.walkthroughNavOrders,
               ),
               _navItem(
-                c, 2, Icons.dashboard_outlined, l10n.templates, 
-                showcaseKey: WalkthroughKeys.bottomNavTemplates, 
+                c,
+                2,
+                Icons.group_outlined,
+                AppLocalizations.of(context).customers,
+              ),
+              _navItem(
+                c,
+                3,
+                Icons.dashboard_outlined,
+                l10n.templates,
+                showcaseKey: WalkthroughKeys.bottomNavTemplates,
                 showcaseDesc: l10n.walkthroughNavTemplates,
               ),
-              _navItem(c, 3, Icons.group_outlined, AppLocalizations.of(context).customers),
-              _navItem(c, 4, Icons.settings_outlined, AppLocalizations.of(context).settings),
+              _navItem(
+                c,
+                4,
+                Icons.settings_outlined,
+                AppLocalizations.of(context).settings,
+              ),
             ],
           ),
         ),
@@ -563,7 +867,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _navItem(AppColorScheme c, int index, IconData icon, String label, {GlobalKey? showcaseKey, String? showcaseDesc}) {
+  Widget _navItem(
+    AppColorScheme c,
+    int index,
+    IconData icon,
+    String label, {
+    GlobalKey? showcaseKey,
+    String? showcaseDesc,
+  }) {
     bool isSelected = _bottomNavIndex == index;
     Widget item = GestureDetector(
       onTap: () {
@@ -571,18 +882,22 @@ class _HomeScreenState extends State<HomeScreen> {
           _bottomNavIndex = index;
         });
         _logTabVisit(index);
-        
+
         // Re-evaluate walkthrough if changing tabs
         final cubit = context.read<WalkthroughCubit>();
         final walkthroughState = cubit.state;
+
         if (walkthroughState is WalkthroughStepCreateCustomer && index == 0) {
           if (!cubit.isCustomerShown) {
             cubit.markCustomerShown();
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              ShowcaseView.get().startShowCase([WalkthroughKeys.homeAddCustomerFab]);
+              ShowcaseView.get().startShowCase([
+                WalkthroughKeys.homeAddCustomerFab,
+              ]);
             });
           }
-        } else if (walkthroughState is WalkthroughStepCreateTemplate && index == 2) {
+        } else if (walkthroughState is WalkthroughStepCreateTemplate &&
+            index == 3) {
           if (!cubit.isTemplateScreenShown) {
             cubit.markTemplateScreenShown();
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -592,11 +907,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ]);
             });
           }
-        } else if (walkthroughState is WalkthroughStepCreateOrder && index == 1) {
+        } else if (walkthroughState is WalkthroughStepCreateOrder &&
+            index == 1) {
           if (!cubit.isOrderScreenShown) {
             cubit.markOrderScreenShown();
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              ShowcaseView.get().startShowCase([WalkthroughKeys.ordersAddButton]);
+              ShowcaseView.get().startShowCase([
+                WalkthroughKeys.ordersAddButton,
+              ]);
             });
           }
         }
@@ -611,7 +929,8 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 2),
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              width: 4, height: 4,
+              width: 4,
+              height: 4,
               decoration: BoxDecoration(
                 color: isSelected ? c.colorPrimary : Colors.transparent,
                 shape: BoxShape.circle,

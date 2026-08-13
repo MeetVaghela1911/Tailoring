@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/utils/snackbar_utils.dart';
 import 'package:tailoring_flutter/l10n/app_localizations.dart';
@@ -18,6 +17,7 @@ import '../domain/entities/order_entity.dart';
 import 'bloc/order_bloc.dart';
 import 'bloc/order_event.dart';
 import 'bloc/order_state.dart';
+import '../../../core/services/receipt_pdf_service.dart';
 import '../../../core/utility/dependency_injection.dart';
 import 'bloc/order_wizard_bloc.dart';
 
@@ -30,6 +30,7 @@ class OrderDetailScreen extends StatefulWidget {
 }
 
 class _OrderDetailScreenState extends State<OrderDetailScreen> {
+  late OrderEntity _order;
   late final TextEditingController _instructionsCtrl;
   late final TextEditingController _advanceCtrl;
 
@@ -38,9 +39,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   @override
   void initState() {
     super.initState();
-    final o = widget.order;
-    _instructionsCtrl = TextEditingController(text: o.specialInstructions);
-    _advanceCtrl = TextEditingController(text: o.advancePaid.toStringAsFixed(0));
+    _order = widget.order;
+    _instructionsCtrl = TextEditingController(text: _order.specialInstructions);
+    _advanceCtrl = TextEditingController(text: _order.advancePaid.toStringAsFixed(0));
   }
 
   @override
@@ -59,7 +60,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         title: Text(AppLocalizations.of(context).deleteOrderTitle,
             style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: c.textDark)),
         content: Text(
-            AppLocalizations.of(context).deleteOrderConfirm(widget.order.customerName ?? ''),
+            AppLocalizations.of(context).deleteOrderConfirm(_order.customerName ?? ''),
             style: GoogleFonts.poppins(fontSize: 13, color: c.gray)),
         actions: [
           TextButton(
@@ -72,7 +73,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 0),
             onPressed: () {
-              context.read<OrderBloc>().add(DeleteOrder(widget.order.id));
+              context.read<OrderBloc>().add(DeleteOrder(_order.id));
               context.pop();
             },
             child: Text(AppLocalizations.of(context).delete, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -86,20 +87,43 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget build(BuildContext context) {
     final c = getThemeBaseColors(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final o = widget.order;
     
-    return BlocListener<OrderBloc, OrderState>(
+    return BlocConsumer<OrderBloc, OrderState>(
       listener: (context, state) {
         if (state is OrderDeleteSuccess) {
           context.pop(true);
           showAppSnackBar(context, message: AppLocalizations.of(context).operationSuccessful);
         } else if (state is OrderUpdateSuccess) {
+          if (state.order.id == _order.id) {
+            setState(() {
+              _order = state.order;
+              _instructionsCtrl.text = _order.specialInstructions;
+              _advanceCtrl.text = _order.advancePaid.toStringAsFixed(0);
+            });
+          }
           showAppSnackBar(context, message: AppLocalizations.of(context).operationSuccessful);
+        } else if (state is OrdersLoaded) {
+          final updated = state.orders.where((e) => e.id == _order.id).firstOrNull;
+          if (updated != null && updated != _order) {
+            setState(() {
+              _order = updated;
+              _instructionsCtrl.text = _order.specialInstructions;
+              _advanceCtrl.text = _order.advancePaid.toStringAsFixed(0);
+            });
+          }
         } else if (state is OrderError) {
           showAppSnackBar(context, message: state.message, isError: true);
         }
       },
-      child: Scaffold(
+      builder: (context, state) {
+        OrderEntity o = _order;
+        if (state is OrdersLoaded) {
+          final updated = state.orders.where((e) => e.id == _order.id).firstOrNull;
+          if (updated != null) {
+            o = updated;
+          }
+        }
+        return Scaffold(
         backgroundColor: c.background,
         body: Stack(
           children: [
@@ -119,11 +143,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               ),
             ),
             SafeArea(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
-                children: [
+              child: RefreshIndicator(
+                color: c.colorPrimary,
+                onRefresh: () async {
+                  final bloc = context.read<OrderBloc>();
+                  bloc.add(LoadOrders());
+                  await bloc.stream.firstWhere(
+                    (s) => s is OrdersLoaded || s is OrderError,
+                  );
+                },
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
+                  children: [
                   _buildHeader(c, o),
                   const SizedBox(height: 24),
+                  _buildDeliveredPaymentPendingBanner(context, c, o),
                   _buildCustomerSection(c, isDark, o),
                   const SizedBox(height: 20),
                   _buildGarmentsSection(c, isDark, o),
@@ -172,11 +207,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ],
               ),
             ),
+          ),
           ],
         ),
-      ),
-    );
-  }
+      );
+    },
+  );
+}
 
   Widget _buildHeader(AppColorScheme c, OrderEntity o) {
     return Row(
@@ -194,31 +231,100 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ]),
         ),
         GestureDetector(
-          onTap: () async {
-            if (o.customerPhone != null && o.customerPhone!.isNotEmpty) {
-              final phone = o.customerPhone!.replaceAll(RegExp(r'[^\d+]'), '');
-              final url = Uri.parse('https://wa.me/$phone');
-              if (await canLaunchUrl(url)) {
-                await launchUrl(url, mode: LaunchMode.externalApplication);
-              } else {
-                if (!mounted) return;
-                showAppSnackBar(context, message: AppLocalizations.of(context).couldNotLaunchWhatsApp, isError: true);
-              }
-            } else {
-              if (!mounted) return;
-              showAppSnackBar(context, message: AppLocalizations.of(context).noPhoneAvailable, isError: true);
-            }
-          },
+          onTap: () => ReceiptPdfService.showWhatsAppReceiptBottomSheet(context, o),
           child: Container(
             width: 40, height: 40,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-                color: const Color(0xFF25D366).withValues(alpha: 0.1),
+                color: const Color(0xFF25D366).withValues(alpha: 0.12),
                 shape: BoxShape.circle),
-            child: const FaIcon(FontAwesomeIcons.whatsapp,
-                color: Color(0xFF25D366), size: 18),
+            child: const Center(
+              child: FaIcon(
+                FontAwesomeIcons.whatsapp,
+                color: Color(0xFF25D366),
+                size: 20,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () => ReceiptPdfService.showWhatsAppReceiptBottomSheet(context, o),
+          child: Container(
+            width: 40, height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+                color: c.colorPrimary.withValues(alpha: 0.12),
+                shape: BoxShape.circle),
+            child: Icon(
+              Icons.picture_as_pdf_outlined,
+              color: c.colorPrimary,
+              size: 20,
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDeliveredPaymentPendingBanner(BuildContext context, AppColorScheme c, OrderEntity o) {
+    if (o.status != 'DELIVERED' || o.balanceDue <= 0) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.amber.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.amber.shade700, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                'DELIVERED · PAYMENT PENDING',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.8,
+                  color: Colors.amber.shade900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'This order has been delivered, but ₹${o.balanceDue.toStringAsFixed(2)} payment is pending.',
+            style: GoogleFonts.poppins(fontSize: 13, color: c.textDark),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+              onPressed: () {
+                final upd = o.copyWith(advancePaid: o.totalAmount);
+                context.read<OrderBloc>().add(UpdateOrder(upd));
+                showAppSnackBar(context, message: 'Payment marked as Completed!');
+              },
+              icon: const Icon(Icons.check_circle_outline, size: 18),
+              label: Text(
+                'Mark Payment Completed (₹${o.balanceDue.toStringAsFixed(0)})',
+                style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -256,29 +362,62 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     ]);
   }
 
+  void _onStatusSelected(BuildContext context, AppColorScheme c, OrderEntity o, String nextStatus) {
+    if (nextStatus == 'DELIVERED' && o.balanceDue > 0) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            'Order Delivered',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Order #${o.id.length > 6 ? o.id.substring(0, 6) : o.id} has a pending balance of ₹${o.balanceDue.toStringAsFixed(2)}.\n\nHas the customer completed full payment?',
+            style: GoogleFonts.poppins(fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                final upd = o.copyWith(status: 'DELIVERED');
+                context.read<OrderBloc>().add(UpdateOrder(upd));
+              },
+              child: Text(
+                'Keep Payment Pending',
+                style: GoogleFonts.poppins(color: c.gray, fontWeight: FontWeight.w600),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                final upd = o.copyWith(
+                  status: 'DELIVERED',
+                  advancePaid: o.totalAmount,
+                );
+                context.read<OrderBloc>().add(UpdateOrder(upd));
+              },
+              child: Text(
+                'Payment Completed',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      final upd = o.copyWith(status: nextStatus);
+      context.read<OrderBloc>().add(UpdateOrder(upd));
+    }
+  }
+
   Widget _statusPicker(BuildContext context, AppColorScheme c, OrderEntity o) {
     return PopupMenuButton<String>(
-      onSelected: (String next) {
-        final upd = OrderEntity(
-          id: o.id,
-          customerId: o.customerId,
-          customerName: o.customerName,
-          customerPhone: o.customerPhone,
-          garmentTypes: o.garmentTypes,
-          specialInstructions: o.specialInstructions,
-          referenceImagePath: o.referenceImagePath,
-          measurements: o.measurements,
-          deliveryDate: o.deliveryDate,
-          priorityIndex: o.priorityIndex,
-          assignedTailor: o.assignedTailor,
-          totalAmount: o.totalAmount,
-          advancePaid: o.advancePaid,
-          paymentMode: o.paymentMode,
-          status: next,
-          createdAt: o.createdAt,
-        );
-        context.read<OrderBloc>().add(UpdateOrder(upd));
-      },
+      onSelected: (String next) => _onStatusSelected(context, c, o, next),
       itemBuilder: (ctx) => _statuses.map((s) => PopupMenuItem(value: s, child: Text(getLocalizedStatus(s, AppLocalizations.of(context)), style: GoogleFonts.poppins(fontSize: 13)))).toList(),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -299,32 +438,109 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
+  void _openFullScreenImage(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (ctx) => Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Center(
+                child: InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 4.0,
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
+                        const SizedBox(height: 8),
+                        Text(
+                          AppLocalizations.of(context).imageFailed,
+                          style: GoogleFonts.poppins(color: Colors.white54, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 16,
+                right: 16,
+                child: CircleAvatar(
+                  backgroundColor: Colors.black54,
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildGarmentsSection(AppColorScheme c, bool isDark, OrderEntity o) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _sectionLabel(c, Icons.checkroom_outlined, AppLocalizations.of(context).garmentsDesign),
       const SizedBox(height: 10),
       _card(c, isDark, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (o.referenceImagePath != null && o.referenceImagePath!.isNotEmpty) ...[
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              o.referenceImagePath!,
-              width: double.infinity,
-              height: 200,
-              fit: BoxFit.cover,
-              errorBuilder: (ctx, _, _) => Container(
-                width: double.infinity,
-                height: 150,
-                color: c.divider.withValues(alpha: 0.1),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.broken_image_outlined, color: c.gray, size: 32),
-                    const SizedBox(height: 8),
-                    Text(AppLocalizations.of(context).imageFailed, style: GoogleFonts.poppins(fontSize: 12, color: c.gray)),
-                  ],
+          GestureDetector(
+            onTap: () => _openFullScreenImage(context, o.referenceImagePath!),
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    o.referenceImagePath!,
+                    width: double.infinity,
+                    height: 200,
+                    fit: BoxFit.cover,
+                    errorBuilder: (ctx, _, _) => Container(
+                      width: double.infinity,
+                      height: 150,
+                      color: c.divider.withValues(alpha: 0.1),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.broken_image_outlined, color: c.gray, size: 32),
+                          const SizedBox(height: 8),
+                          Text(AppLocalizations.of(context).imageFailed, style: GoogleFonts.poppins(fontSize: 12, color: c.gray)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                Positioned(
+                  bottom: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.zoom_in, color: Colors.white, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Tap to expand',
+                          style: GoogleFonts.poppins(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 20),

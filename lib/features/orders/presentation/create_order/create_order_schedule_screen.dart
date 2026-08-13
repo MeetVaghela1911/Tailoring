@@ -25,6 +25,7 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
   late int _priorityIndex;
   late DateTime? _selectedDate;
   late String _selectedTailor;
+  bool _applySurcharge = false;
 
   @override
   void initState() {
@@ -33,6 +34,7 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
     _priorityIndex = d.priorityIndex;
     _selectedDate = d.deliveryDate;
     _selectedTailor = d.assignedTailor;
+    _applySurcharge = d.externalCharges > 0;
   }
 
   @override
@@ -84,7 +86,7 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
                       const SizedBox(height: 24),
                       _buildPrioritySection(c),
                       const SizedBox(height: 24),
-                      // _buildAssignSection(c),
+                      // _buildTailorSection(c),
                       const SizedBox(height: 32),
                       _buildNextStepButton(c),
                       const SizedBox(height: 20),
@@ -273,47 +275,47 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF3E0),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        AppLocalizations.of(context).highCapacityDay,
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange[800],
-                        ),
-                      ),
-                      Text(
-                        AppLocalizations.of(context).shopFloorLoadHint,
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: Colors.orange[700],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // const SizedBox(height: 16),
+          // Container(
+          //   padding: const EdgeInsets.all(12),
+          //   decoration: BoxDecoration(
+          //     color: const Color(0xFFFFF3E0),
+          //     borderRadius: BorderRadius.circular(12),
+          //   ),
+          //   child: Row(
+          //     crossAxisAlignment: CrossAxisAlignment.start,
+          //     children: [
+          //       const Icon(
+          //         Icons.warning_amber_rounded,
+          //         color: Colors.orange,
+          //         size: 18,
+          //       ),
+          //       const SizedBox(width: 8),
+          //       Expanded(
+          //         child: Column(
+          //           crossAxisAlignment: CrossAxisAlignment.start,
+          //           children: [
+          //             Text(
+          //               AppLocalizations.of(context).highCapacityDay,
+          //               style: GoogleFonts.poppins(
+          //                 fontSize: 12,
+          //                 fontWeight: FontWeight.bold,
+          //                 color: Colors.orange[800],
+          //               ),
+          //             ),
+          //             Text(
+          //               AppLocalizations.of(context).shopFloorLoadHint,
+          //               style: GoogleFonts.poppins(
+          //                 fontSize: 11,
+          //                 color: Colors.orange[700],
+          //               ),
+          //             ),
+          //           ],
+          //         ),
+          //       ),
+          //     ],
+          //   ),
+          // ),
         ],
       ),
     );
@@ -340,19 +342,93 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
         const SizedBox(height: 16),
         Row(
           children: [
-            Expanded(child: _priorityChip(c, 0, AppLocalizations.of(context).normal)),
+            Expanded(
+              child: _priorityChip(c, 0, AppLocalizations.of(context).normal),
+            ),
             const SizedBox(width: 8),
-            Expanded(child: _priorityChip(c, 1, AppLocalizations.of(context).high, color: c.colorPrimary)),
+            Expanded(
+              child: _priorityChip(
+                c,
+                1,
+                AppLocalizations.of(context).high,
+                color: c.colorPrimary,
+              ),
+            ),
             const SizedBox(width: 8),
-            Expanded(child: _priorityChip(c, 2, AppLocalizations.of(context).urgent, color: c.red)),
+            Expanded(
+              child: _priorityChip(
+                c,
+                2,
+                AppLocalizations.of(context).urgent,
+                color: c.red,
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 12),
-        if (_priorityIndex > 0)
-          Text(
-            AppLocalizations.of(context).highPrioritySurchargeHint,
-            style: GoogleFonts.poppins(fontSize: 11, color: c.colorPrimary),
+        if (_priorityIndex > 0) ...[
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: () => setState(() => _applySurcharge = !_applySurcharge),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? c.black.withValues(alpha: 0.2)
+                    : c.grayLight.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _applySurcharge
+                      ? c.colorPrimary
+                      : c.divider.withValues(alpha: 0.4),
+                  width: _applySurcharge ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: Checkbox(
+                      value: _applySurcharge,
+                      onChanged: (v) =>
+                          setState(() => _applySurcharge = v ?? false),
+                      activeColor: c.colorPrimary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Add 15% Priority Surcharge',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: c.textDark,
+                          ),
+                        ),
+                        Text(
+                          AppLocalizations.of(
+                            context,
+                          ).highPrioritySurchargeHint,
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            color: c.gray,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
+        ],
       ],
     );
   }
@@ -392,6 +468,70 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
     );
   }
 
+  // ignore: unused_element
+  Widget _buildTailorSection(AppColorScheme c) {
+    final tailors = [
+      'Unassigned',
+      'Ramesh (Master)',
+      'Suresh (Stitcher)',
+      'Anita (Finisher)',
+    ];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.person_outline, color: c.colorPrimary, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Assign to Tailor',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: c.textDark,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          decoration: BoxDecoration(
+            color: isDark ? c.black.withValues(alpha: 0.2) : c.grayLight,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: tailors.contains(_selectedTailor)
+                  ? _selectedTailor
+                  : tailors.first,
+              isExpanded: true,
+              icon: Icon(Icons.keyboard_arrow_down, color: c.colorPrimary),
+              dropdownColor: isDark ? c.background : Colors.white,
+              items: tailors.map((t) {
+                return DropdownMenuItem(
+                  value: t,
+                  child: Text(
+                    t,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: c.textDark,
+                    ),
+                  ),
+                );
+              }).toList(),
+              onChanged: (v) {
+                if (v != null) setState(() => _selectedTailor = v);
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildNextStepButton(AppColorScheme c) {
     return SizedBox(
@@ -414,10 +554,22 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
             );
             return;
           }
-          final updated = getIt<OrderWizardBloc>().state.formData.copyWith(
+          final currentData = getIt<OrderWizardBloc>().state.formData;
+          double surchargeAmount = 0.0;
+          if (_priorityIndex > 0 && _applySurcharge) {
+            double itemSum = 0.0;
+            currentData.garmentPrices.forEach((key, price) {
+              final qty = currentData.garmentQuantities[key] ?? 1;
+              itemSum += (price * qty);
+            });
+            surchargeAmount = itemSum * 0.15;
+          }
+
+          final updated = currentData.copyWith(
             priorityIndex: _priorityIndex,
             deliveryDate: _selectedDate,
             assignedTailor: _selectedTailor,
+            externalCharges: surchargeAmount,
           );
           getIt<OrderWizardBloc>().add(UpdateOrderData(updated));
           context.push(AppRoutes.createOrderPayment);

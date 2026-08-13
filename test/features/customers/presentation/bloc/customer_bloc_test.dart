@@ -101,6 +101,28 @@ void main() {
     );
 
     blocTest<CustomerBloc, CustomerState>(
+      'assigns a non-empty UUID when adding customer with empty ID',
+      build: () {
+        when(() => mockAddCustomerUseCase(any())).thenAnswer((invocation) async {
+          final Customer passedCust = invocation.positionalArguments.first as Customer;
+          return Right(passedCust);
+        });
+        return customerBloc;
+      },
+      seed: () => CustomersLoaded(tCustomers),
+      act: (bloc) => bloc.add(AddCustomer(Customer(
+        id: '',
+        name: 'Empty ID Customer',
+        phoneNumber: '9999999999',
+        createdAt: DateTime.now(),
+      ))),
+      verify: (_) {
+        final captured = verify(() => mockAddCustomerUseCase(captureAny())).captured.single as Customer;
+        expect(captured.id, isNotEmpty);
+      },
+    );
+
+    blocTest<CustomerBloc, CustomerState>(
       'emits [CustomersLoaded (optimistic), CustomerError, CustomersLoaded (reverted)] when failure occurs',
       build: () {
         when(() => mockAddCustomerUseCase(any())).thenAnswer((_) async => const Left(ServerFailure('Add failed')));

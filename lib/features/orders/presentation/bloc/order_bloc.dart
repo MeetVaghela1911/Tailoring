@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:uuid/uuid.dart';
 import '../../domain/usecases/create_order_usecase.dart';
 import '../../domain/usecases/delete_order_usecase.dart';
 import '../../domain/usecases/get_orders_usecase.dart';
@@ -48,18 +49,30 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
       currentOrders = List<OrderEntity>.from(currentState.orders);
     }
 
+    final orderToAdd = event.order.id.trim().isEmpty
+        ? event.order.copyWith(id: const Uuid().v4())
+        : event.order;
+
     // Optimistic Update
-    final optimisticList = List<OrderEntity>.from(currentOrders)..add(event.order);
+    final optimisticList = List<OrderEntity>.from(currentOrders)..add(orderToAdd);
     emit(OrdersLoaded(optimisticList));
 
-    final result = await createOrderUseCase(event.order);
+    final result = await createOrderUseCase(orderToAdd);
     result.fold(
       (failure) {
         // Revert on failure
         emit(OrderError(failure.message));
         emit(OrdersLoaded(currentOrders));
       },
-      (_) => emit(OrderCreateSuccess(optimisticList, event.order)),
+      (savedOrder) {
+        final updatedList = optimisticList.map((o) {
+          if (o.id == orderToAdd.id || (o.id.isEmpty && o.customerName == savedOrder.customerName)) {
+            return savedOrder;
+          }
+          return o;
+        }).toList();
+        emit(OrderCreateSuccess(updatedList, savedOrder));
+      },
     );
   }
 
@@ -94,6 +107,8 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     DeleteOrder event,
     Emitter<OrderState> emit,
   ) async {
+    if (event.id.trim().isEmpty) return;
+
     final currentState = state;
     List<OrderEntity> currentOrders = [];
     if (currentState is OrdersLoaded) {

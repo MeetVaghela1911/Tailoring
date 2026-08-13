@@ -131,61 +131,93 @@ class _CreateOrderCustomerScreenState extends State<CreateOrderCustomerScreen> {
                         }
                       }
                     },
+                    child: RefreshIndicator(
+                    color: c.colorPrimary,
+                    onRefresh: () async {
+                      final bloc = context.read<CustomerBloc>();
+                      bloc.add(LoadCustomers());
+                      await bloc.stream.firstWhere(
+                        (s) => s is CustomersLoaded || s is CustomerError,
+                      );
+                    },
                     child: BlocBuilder<CustomerBloc, CustomerState>(
                       builder: (context, state) {
                         if (state is CustomerLoading) {
-                          return const Center(child: CircularProgressIndicator());
+                          return SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            child: SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.4,
+                              child: const Center(child: CircularProgressIndicator()),
+                            ),
+                          );
                         } else if (state is CustomersLoaded) {
-                        final filteredCustomers = state.customers.where((cust) {
-                          return cust.name.toLowerCase().contains(_searchQuery) ||
-                              cust.phoneNumber.contains(_searchQuery);
-                        }).toList();
+                          final filteredCustomers = state.customers.where((cust) {
+                            return cust.name.toLowerCase().contains(_searchQuery) ||
+                                cust.phoneNumber.contains(_searchQuery);
+                          }).toList();
 
-                        if (filteredCustomers.isEmpty) {
-                          return _buildEmptyState(c);
-                        }
+                          if (filteredCustomers.isEmpty) {
+                            return SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              child: SizedBox(
+                                height: MediaQuery.of(context).size.height * 0.4,
+                                child: _buildEmptyState(c),
+                              ),
+                            );
+                          }
 
-                        return ListView.builder(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 24,
-                          ),
-                          itemCount: filteredCustomers.length + (getIt<OrderWizardBloc>().state.formData.customerId != null ? 2 : 1),
-                          itemBuilder: (context, index) {
-                            if (index == 0 && getIt<OrderWizardBloc>().state.formData.customerId != null) {
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    AppLocalizations.of(context).selectedCustomer,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: c.textDark,
+                          return ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 24,
+                            ),
+                            itemCount: filteredCustomers.length + (getIt<OrderWizardBloc>().state.formData.customerId != null ? 2 : 1),
+                            itemBuilder: (context, index) {
+                              if (index == 0 && getIt<OrderWizardBloc>().state.formData.customerId != null) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      AppLocalizations.of(context).selectedCustomer,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: c.textDark,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _buildSelectedCustomerCard(c, getIt<OrderWizardBloc>().state.formData),
-                                  const SizedBox(height: 24),
-                                ],
-                              );
-                            }
-                            final headerIndex = getIt<OrderWizardBloc>().state.formData.customerId != null ? 1 : 0;
-                            if (index == headerIndex) {
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 16.0),
-                                child: _buildRecentCustomersHeader(c),
-                              );
-                            }
-                            final customer = filteredCustomers[index - (headerIndex + 1)];
-                            return _buildCustomerCard(c, customer);
-                          },
+                                    const SizedBox(height: 12),
+                                    _buildSelectedCustomerCard(c, getIt<OrderWizardBloc>().state.formData),
+                                    const SizedBox(height: 24),
+                                  ],
+                                );
+                              }
+                              final headerIndex = getIt<OrderWizardBloc>().state.formData.customerId != null ? 1 : 0;
+                              if (index == headerIndex) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 16.0),
+                                  child: _buildRecentCustomersHeader(c),
+                                );
+                              }
+                              final customer = filteredCustomers[index - (headerIndex + 1)];
+                              return _buildCustomerCard(c, customer);
+                            },
+                          );
+                        } else if (state is CustomerError) {
+                          return SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            child: SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.4,
+                              child: Center(child: Text(state.message)),
+                            ),
+                          );
+                        }
+                        return SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: Container(),
                         );
-                      } else if (state is CustomerError) {
-                        return Center(child: Text(state.message));
-                      }
-                      return const SizedBox.shrink();
-                    },
+                      },
+                    ),
                   ),
                 ),
                 ),

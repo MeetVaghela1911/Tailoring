@@ -62,7 +62,9 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final walkthroughState = context.read<WalkthroughCubit>().state;
       if (walkthroughState is WalkthroughStepCreateOrder) {
-        ShowcaseView.get().startShowCase([WalkthroughKeys.createOrderSelectGarments]);
+        ShowcaseView.get().startShowCase([
+          WalkthroughKeys.createOrderSelectGarments,
+        ]);
       }
     });
   }
@@ -80,8 +82,6 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
     final String localPath = path.join(directory.path, fileName);
     return originalFile.copy(localPath);
   }
-
-
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -105,45 +105,77 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
       );
       return;
     }
+
     double calculatedTotal = 0;
+
     final currentData = getIt<OrderWizardBloc>().state.formData;
-    Map<String, double> garmentPrices = Map.from(currentData.garmentPrices);
-    
-    for (var gName in _selectedGarments) {
-      final qty = _garmentQuantities[gName] ?? 1;
-      
-      if (!garmentPrices.containsKey(gName)) {
-        final t = _allTemplates.firstWhere((e) => e.name == gName, orElse: () => const Template(id: '', name: '', category: '', iconCodePoint: 0, fields: [], basePrice: 0));
-        garmentPrices[gName] = t.basePrice * qty;
+
+    Map<String, double> existingPrices = Map.from(currentData.garmentPrices);
+    Map<String, double> garmentPrices = {};
+    Map<String, int> garmentQuantities = {};
+
+    for (final templateId in _selectedGarments) {
+      final qty = _garmentQuantities[templateId] ?? 1;
+      final template = _allTemplates.firstWhere(
+        (t) => t.id == templateId || t.name == templateId,
+        orElse: () => Template(
+          id: templateId,
+          name: templateId,
+          category: 'Other',
+          iconCodePoint: 0,
+          fields: const [],
+          basePrice: 0.0,
+        ),
+      );
+      final name = template.name;
+
+      garmentQuantities[name] = qty;
+
+      if (!existingPrices.containsKey(name) && !existingPrices.containsKey(templateId)) {
+        garmentPrices[name] = template.basePrice * qty;
       } else {
-        final oldQty = currentData.garmentQuantities[gName] ?? 1;
+        final existingPrice = existingPrices[name] ?? existingPrices[templateId] ?? (template.basePrice * qty);
+        final oldQty = currentData.garmentQuantities[name] ?? currentData.garmentQuantities[templateId] ?? 1;
         if (qty != oldQty && oldQty > 0) {
-          final unitPrice = garmentPrices[gName]! / oldQty;
-          garmentPrices[gName] = unitPrice * qty;
+          final unitPrice = existingPrice / oldQty;
+          garmentPrices[name] = unitPrice * qty;
+        } else {
+          garmentPrices[name] = existingPrice;
         }
       }
-      calculatedTotal += garmentPrices[gName]!;
+
+      calculatedTotal += garmentPrices[name]!;
     }
 
-    garmentPrices.removeWhere((key, value) => !_selectedGarments.contains(key));
+    final selectedTemplateNames = _selectedGarments.map((id) {
+      final template = _allTemplates.firstWhere(
+        (t) => t.id == id || t.name == id,
+        orElse: () => Template(
+          id: id,
+          name: id,
+          category: 'Other',
+          iconCodePoint: 0,
+          fields: const [],
+          basePrice: 0.0,
+        ),
+      );
+      return template.name;
+    }).toList();
 
     final updated = currentData.copyWith(
-      garmentTypes: _selectedGarments.toList(),
+      garmentTypes: selectedTemplateNames,
       garmentPrices: garmentPrices,
-      garmentQuantities: _garmentQuantities,
+      garmentQuantities: garmentQuantities,
       specialInstructions: _instructionsCtrl.text.trim(),
       referenceImageFile: _imageFile,
-      totalAmount: calculatedTotal, // Always recalculate based on selection and quantities
+      totalAmount: calculatedTotal,
     );
-    
+
     getIt<OrderWizardBloc>().add(UpdateOrderData(updated));
 
     context.push(
       AppRoutes.createOrderMeasurements,
-      extra: {
-        'garmentTypes': _selectedGarments.toList(),
-        'isOrderFlow': true,
-      },
+      extra: {'garmentTypes': selectedTemplateNames, 'isOrderFlow': true},
     );
   }
 
@@ -200,11 +232,13 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                           }
                         },
                         builder: (context, templateState) {
-                          List<String> combinedOptions = [];
+                          List<Template> templates = [];
+
                           if (templateState is TemplatesLoaded) {
-                            combinedOptions = templateState.templates.map((e) => e.name).toList();
+                            templates = templateState.templates;
                           }
-                          return _buildItemSection(c, combinedOptions);
+
+                          return _buildItemSection(c, templates);
                         },
                       ),
                       const SizedBox(height: 32),
@@ -331,7 +365,7 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
     );
   }
 
-  Widget _buildItemSection(AppColorScheme c, List<String> garmentOptions) {
+  Widget _buildItemSection(AppColorScheme c, List<Template> garmentOptions) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
@@ -396,23 +430,28 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
               spacing: 10,
               runSpacing: 10,
               children: garmentOptions.map((garment) {
-                final isSelected = _selectedGarments.contains(garment);
+                final isSelected = _selectedGarments.contains(garment.id);
                 return GestureDetector(
                   onTap: () {
                     setState(() {
                       if (isSelected) {
-                        _selectedGarments.remove(garment);
-                        _garmentQuantities.remove(garment);
+                        _selectedGarments.remove(garment.id);
+                        _garmentQuantities.remove(garment.id);
                       } else {
-                        _selectedGarments.add(garment);
-                        _garmentQuantities[garment] = 1;
+                        _selectedGarments.add(garment.id);
+                        _garmentQuantities[garment.id] = 1;
 
                         // Trigger quantity guide if walkthrough is active and we haven't shown it yet
-                        final walkthroughState = context.read<WalkthroughCubit>().state;
-                        if (walkthroughState is WalkthroughStepCreateOrder && !_hasShownQuantityGuide) {
+                        final walkthroughState = context
+                            .read<WalkthroughCubit>()
+                            .state;
+                        if (walkthroughState is WalkthroughStepCreateOrder &&
+                            !_hasShownQuantityGuide) {
                           _hasShownQuantityGuide = true;
                           WidgetsBinding.instance.addPostFrameCallback((_) {
-                            ShowcaseView.get().startShowCase([WalkthroughKeys.createOrderSetQuantities]);
+                            ShowcaseView.get().startShowCase([
+                              WalkthroughKeys.createOrderSetQuantities,
+                            ]);
                           });
                         }
                       }
@@ -438,11 +477,19 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (isSelected) ...[
-                          const Icon(Icons.check, color: Colors.white, size: 14),
+                          const Icon(
+                            Icons.check,
+                            color: Colors.white,
+                            size: 14,
+                          ),
                           const SizedBox(width: 6),
                         ],
                         Text(
-                          getLocalizedTemplateName(garment, garment, AppLocalizations.of(context)),
+                          getLocalizedTemplateName(
+                            garment.id,
+                            garment.name,
+                            AppLocalizations.of(context),
+                          ),
                           style: GoogleFonts.poppins(
                             fontSize: 13,
                             fontWeight: isSelected
@@ -462,7 +509,9 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
             const SizedBox(height: 24),
             Showcase(
               key: WalkthroughKeys.createOrderSetQuantities,
-              description: AppLocalizations.of(context).walkthroughSetQuantities,
+              description: AppLocalizations.of(
+                context,
+              ).walkthroughSetQuantities,
               targetBorderRadius: BorderRadius.circular(16),
               targetPadding: const EdgeInsets.all(6),
               child: Column(
@@ -478,23 +527,50 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  ..._selectedGarments.map((g) {
-                    final qty = _garmentQuantities[g] ?? 1;
+                  ..._selectedGarments.map((templateId) {
+                    final template = garmentOptions.firstWhere(
+                      (t) => t.id == templateId || t.name == templateId,
+                      orElse: () => Template(
+                        id: templateId,
+                        name: templateId,
+                        category: 'Other',
+                        iconCodePoint: 0,
+                        fields: const [],
+                        basePrice: 0.0,
+                      ),
+                    );
+
+                    final qty = _garmentQuantities[templateId] ?? 1;
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
-                        color: isDark ? c.background : c.grayLight.withValues(alpha: 0.3),
+                        color: isDark
+                            ? c.background
+                            : c.grayLight.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: c.divider.withValues(alpha: 0.2)),
+                        border: Border.all(
+                          color: c.divider.withValues(alpha: 0.2),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.checkroom, size: 18, color: c.colorPrimary),
+                          Icon(
+                            Icons.checkroom,
+                            size: 18,
+                            color: c.colorPrimary,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              getLocalizedTemplateName(g, g, AppLocalizations.of(context)),
+                              getLocalizedTemplateName(
+                                template.id,
+                                template.name,
+                                AppLocalizations.of(context),
+                              ),
                               style: GoogleFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
@@ -505,10 +581,19 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                           Row(
                             children: [
                               IconButton(
-                                icon: Icon(Icons.remove_circle_outline, size: 20, color: qty > 1 ? c.colorPrimary : c.gray),
-                                onPressed: qty > 1 ? () {
-                                  setState(() => _garmentQuantities[g] = qty - 1);
-                                } : null,
+                                icon: Icon(
+                                  Icons.remove_circle_outline,
+                                  size: 20,
+                                  color: qty > 1 ? c.colorPrimary : c.gray,
+                                ),
+                                onPressed: qty > 1
+                                    ? () {
+                                        setState(
+                                          () => _garmentQuantities[templateId] =
+                                              qty + 1,
+                                        );
+                                      }
+                                    : null,
                               ),
                               SizedBox(
                                 width: 30,
@@ -523,9 +608,16 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                                 ),
                               ),
                               IconButton(
-                                icon: Icon(Icons.add_circle_outline, size: 20, color: c.colorPrimary),
+                                icon: Icon(
+                                  Icons.add_circle_outline,
+                                  size: 20,
+                                  color: c.colorPrimary,
+                                ),
                                 onPressed: () {
-                                  setState(() => _garmentQuantities[g] = qty + 1);
+                                  setState(
+                                    () => _garmentQuantities[templateId] =
+                                        qty + 1,
+                                  );
                                 },
                               ),
                             ],
@@ -545,7 +637,9 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                 onPressed: _openMeasurements,
                 icon: Icon(Icons.straighten, color: c.colorPrimary, size: 18),
                 label: Text(
-                  AppLocalizations.of(context).takeMeasurementsWithCount(_selectedGarments.length),
+                  AppLocalizations.of(
+                    context,
+                  ).takeMeasurementsWithCount(_selectedGarments.length),
                   style: GoogleFonts.poppins(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -614,9 +708,9 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                           top: 8,
                           child: InkWell(
                             onTap: () => setState(() {
-                            _imageFile = null;
-                            _remoteImagePath = null;
-                          }),
+                              _imageFile = null;
+                              _remoteImagePath = null;
+                            }),
                             child: Container(
                               padding: const EdgeInsets.all(4),
                               decoration: const BoxDecoration(
@@ -634,45 +728,48 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                       ],
                     )
                   : _remoteImagePath != null
-                      ? Stack(
-                          children: [
-                            Image.network(
-                              _remoteImagePath!,
-                              width: double.infinity,
-                              height: 150,
-                              fit: BoxFit.cover,
-                              errorBuilder: (ctx, _, _) => Container(
-                                width: double.infinity,
-                                height: 150,
-                                color: c.divider.withValues(alpha: 0.1),
-                                child: Icon(Icons.broken_image_outlined, color: c.gray),
+                  ? Stack(
+                      children: [
+                        Image.network(
+                          _remoteImagePath!,
+                          width: double.infinity,
+                          height: 150,
+                          fit: BoxFit.cover,
+                          errorBuilder: (ctx, _, _) => Container(
+                            width: double.infinity,
+                            height: 150,
+                            color: c.divider.withValues(alpha: 0.1),
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              color: c.gray,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: InkWell(
+                            onTap: () => setState(() {
+                              _imageFile = null;
+                              _remoteImagePath = null;
+                            }),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 16,
                               ),
                             ),
-                            Positioned(
-                              right: 8,
-                              top: 8,
-                              child: InkWell(
-                                onTap: () => setState(() {
-                                  _imageFile = null;
-                                  _remoteImagePath = null;
-                                }),
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black54,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.close,
-                                    color: Colors.white,
-                                    size: 16,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : Center(
+                          ),
+                        ),
+                      ],
+                    )
+                  : Center(
                       child: Column(
                         children: [
                           Container(
@@ -724,8 +821,7 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
             maxLines: 4,
             style: GoogleFonts.poppins(fontSize: 14, color: c.textDark),
             decoration: InputDecoration(
-              hintText:
-                  AppLocalizations.of(context).specialInstructionsHint,
+              hintText: AppLocalizations.of(context).specialInstructionsHint,
               hintStyle: GoogleFonts.poppins(fontSize: 13, color: c.gray),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -765,14 +861,24 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildPickerOption(c, Icons.camera_alt, AppLocalizations.of(context).camera, () {
-                context.pop();
-                _pickImage(ImageSource.camera);
-              }),
-              _buildPickerOption(c, Icons.photo_library, AppLocalizations.of(context).gallery, () {
-                context.pop();
-                _pickImage(ImageSource.gallery);
-              }),
+              _buildPickerOption(
+                c,
+                Icons.camera_alt,
+                AppLocalizations.of(context).camera,
+                () {
+                  context.pop();
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              _buildPickerOption(
+                c,
+                Icons.photo_library,
+                AppLocalizations.of(context).gallery,
+                () {
+                  context.pop();
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -832,7 +938,9 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              _selectedGarments.isNotEmpty ? AppLocalizations.of(context).nextMeasurements : AppLocalizations.of(context).nextStep,
+              _selectedGarments.isNotEmpty
+                  ? AppLocalizations.of(context).nextMeasurements
+                  : AppLocalizations.of(context).nextStep,
               style: GoogleFonts.poppins(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,

@@ -46,6 +46,11 @@ dependencies:
   upgrader: ^13.2.0
   package_info_plus: ^9.0.1
   version: ^3.0.2
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.1
+  pdf: ^3.11.1
+  printing: ^5.13.2
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:

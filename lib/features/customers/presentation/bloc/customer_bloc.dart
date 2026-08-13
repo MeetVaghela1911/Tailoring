@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:uuid/uuid.dart';
 import '../../domain/usecases/add_customer_usecase.dart';
 import '../../domain/usecases/delete_customer_usecase.dart';
 import '../../domain/usecases/get_customers_usecase.dart';
@@ -48,18 +49,30 @@ class CustomerBloc extends Bloc<CustomerEvent, CustomerState> {
       currentCustomers = List<Customer>.from(currentState.customers);
     }
 
+    final customerToAdd = event.customer.id.trim().isEmpty
+        ? event.customer.copyWith(id: const Uuid().v4())
+        : event.customer;
+
     // Optimistic Update
-    final optimisticList = List<Customer>.from(currentCustomers)..add(event.customer);
+    final optimisticList = List<Customer>.from(currentCustomers)..add(customerToAdd);
     emit(CustomersLoaded(optimisticList));
 
-    final result = await addCustomerUseCase(event.customer);
+    final result = await addCustomerUseCase(customerToAdd);
     result.fold(
       (failure) {
         // Revert on failure
         emit(CustomerError(failure.message));
         emit(CustomersLoaded(currentCustomers));
       },
-      (_) => emit(CustomerAddSuccess(optimisticList, event.customer)),
+      (savedCustomer) {
+        final updatedList = optimisticList.map((c) {
+          if (c.id == customerToAdd.id || (c.id.isEmpty && c.name == savedCustomer.name)) {
+            return savedCustomer;
+          }
+          return c;
+        }).toList();
+        emit(CustomerAddSuccess(updatedList, savedCustomer));
+      },
     );
   }
 
@@ -94,6 +107,8 @@ class CustomerBloc extends Bloc<CustomerEvent, CustomerState> {
     DeleteCustomer event,
     Emitter<CustomerState> emit,
   ) async {
+    if (event.id.trim().isEmpty) return;
+
     final currentState = state;
     List<Customer> currentCustomers = [];
     if (currentState is CustomersLoaded) {

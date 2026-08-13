@@ -4,6 +4,7 @@ import '../../../../core/database/local_database.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/customer_local_model.dart';
 import '../models/customer_model.dart';
+import '../../../orders/data/models/order_local_model.dart';
 
 abstract class CustomerLocalDataSource {
   Future<List<CustomerModel>> getCustomers();
@@ -26,6 +27,18 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
   Future<List<CustomerModel>> getCustomers() async {
     try {
       final customers = await localDb.isar.customerLocalModels.where().findAll();
+      
+      // Auto-heal any corrupted legacy records with empty remoteId
+      final corrupted = customers.where((c) => c.remoteId.trim().isEmpty).toList();
+      if (corrupted.isNotEmpty) {
+        await localDb.isar.writeTxn(() async {
+          for (final c in corrupted) {
+            c.remoteId = _uuid.v4();
+            await localDb.isar.customerLocalModels.put(c);
+          }
+        });
+      }
+
       return customers.map(_toCustomerModel).toList();
     } catch (e) {
       throw CacheException('Failed to fetch customers from local database: $e');
@@ -34,6 +47,7 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
 
   @override
   Future<CustomerModel?> getCustomerById(String id) async {
+    if (id.trim().isEmpty) return null;
     final customer = await localDb.isar.customerLocalModels.filter().remoteIdEqualTo(id).findFirst();
     if (customer == null) return null;
     return _toCustomerModel(customer);
@@ -70,6 +84,9 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
 
   @override
   Future<CustomerModel> updateCustomer(CustomerModel customer) async {
+    if (customer.id.trim().isEmpty) {
+      throw Exception('Cannot update customer with empty ID');
+    }
     final existingLocal = await localDb.isar.customerLocalModels.filter().remoteIdEqualTo(customer.id).findFirst();
     
     if (existingLocal == null) {
@@ -90,6 +107,20 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
     try {
       await localDb.isar.writeTxn(() async {
         await localDb.isar.customerLocalModels.put(existingLocal);
+
+        // Cascading update: update matching orders with new customer name and phone
+        final matchingOrders = await localDb.isar.orderLocalModels
+            .filter()
+            .customerIdEqualTo(customer.id)
+            .findAll();
+
+        for (final order in matchingOrders) {
+          order.customerName = customer.name;
+          order.customerPhone = customer.phoneNumber;
+          order.isSynced = false;
+          order.lastUpdated = DateTime.now();
+          await localDb.isar.orderLocalModels.put(order);
+        }
       });
     } catch (e) {
       throw CacheException('Failed to update customer in local database: $e');
@@ -100,9 +131,23 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
 
   @override
   Future<void> deleteCustomer(String id) async {
+    if (id.trim().isEmpty) return;
     try {
       await localDb.isar.writeTxn(() async {
         await localDb.isar.customerLocalModels.filter().remoteIdEqualTo(id).deleteAll();
+
+        // Clear customerId reference on associated orders while preserving order details
+        final matchingOrders = await localDb.isar.orderLocalModels
+            .filter()
+            .customerIdEqualTo(id)
+            .findAll();
+
+        for (final order in matchingOrders) {
+          order.customerId = null;
+          order.isSynced = false;
+          order.lastUpdated = DateTime.now();
+          await localDb.isar.orderLocalModels.put(order);
+        }
       });
     } catch (e) {
       throw CacheException('Failed to delete customer from local database: $e');

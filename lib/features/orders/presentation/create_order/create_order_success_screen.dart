@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../../../../core/services/receipt_pdf_service.dart';
 import '../../../../core/theme/common_methods.dart';
 import 'package:tailoring_flutter/l10n/app_localizations.dart';
 import '../../../../routes/app_router.dart';
@@ -327,6 +329,31 @@ class CreateOrderSuccessScreen extends StatelessWidget {
 
                       const Spacer(),
 
+
+                      // Send PDF Receipt on WhatsApp button
+                      if (order != null) ...[
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF25D366),
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size(double.infinity, 50),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 4,
+                          ),
+                          onPressed: () => ReceiptPdfService.showWhatsAppReceiptBottomSheet(context, order!),
+                          icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 20),
+                          label: Text(
+                            'Send PDF Receipt on WhatsApp',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
 
                       // Create Another Order
                       _buildButton(

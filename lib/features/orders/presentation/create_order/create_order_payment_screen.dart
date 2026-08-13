@@ -27,7 +27,13 @@ class CreateOrderPaymentScreen extends StatefulWidget {
 }
 
 class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
-  int _paymentMode = 0; // 0 Cash, 1 Card, 2 UPI
+  int _paymentMode = 0; // 0 Cash, 1 Card, 2 UPI, 3 Not Specified, 4+ Custom
+  final List<Map<String, dynamic>> _paymentModes = [
+    {'label': 'Cash', 'icon': Icons.attach_money},
+    {'label': 'Card', 'icon': Icons.credit_card},
+    {'label': 'Online/UPI', 'icon': Icons.qr_code_scanner},
+    {'label': 'Not Specified', 'icon': Icons.help_outline},
+  ];
   late TextEditingController _advanceController;
   late TextEditingController _totalController;
   late TextEditingController _externalChargesController;
@@ -36,6 +42,7 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
   final Map<String, TextEditingController> _itemControllers = {};
   
   late double _balanceDue;
+  String? _advanceError;
   bool _isUploading = false;
 
   @override
@@ -46,8 +53,6 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
     // Initialize line item controllers
     for (var g in d.garmentTypes) {
       final linePrice = d.garmentPrices[g] ?? (d.garmentQuantities[g] ?? 1) * 0.0; 
-      // Note: we might need to get basePrice from somewhere if garmentPrices[g] is 0
-      // But for now, let's assume it should have been pre-filled.
       _itemControllers[g] = TextEditingController(text: linePrice.toStringAsFixed(0));
       _itemControllers[g]!.addListener(_calculateTotal);
     }
@@ -55,9 +60,9 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
     final total = d.totalAmount;
     _totalController = TextEditingController(text: total.toStringAsFixed(2));
     final advance = d.advancePaid;
-    _advanceController = TextEditingController(text: advance.toStringAsFixed(2));
+    _advanceController = TextEditingController(text: advance > 0 ? advance.toStringAsFixed(0) : '');
     final external = d.externalCharges;
-    _externalChargesController = TextEditingController(text: external.toStringAsFixed(0));
+    _externalChargesController = TextEditingController(text: external > 0 ? external.toStringAsFixed(0) : '');
     
     _balanceDue = (total - advance).clamp(0, double.infinity);
     _paymentMode = d.paymentMode;
@@ -83,8 +88,57 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
     final t = double.tryParse(_totalController.text) ?? 0.0;
     final a = double.tryParse(_advanceController.text) ?? 0.0;
     setState(() {
+      if (a > t && t > 0) {
+        _advanceError = 'Advance amount cannot exceed grand total (₹${t.toStringAsFixed(2)})';
+      } else {
+        _advanceError = null;
+      }
       _balanceDue = (t - a).clamp(0, double.infinity);
     });
+  }
+
+  void _showAddPaymentModeDialog() {
+    final nameCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Add Payment Mode',
+          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        content: TextField(
+          controller: nameCtrl,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'e.g., Paytm, Cheque, Net Banking',
+            hintStyle: GoogleFonts.poppins(fontSize: 13),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = nameCtrl.text.trim();
+              if (text.isNotEmpty) {
+                setState(() {
+                  _paymentModes.add({
+                    'label': text,
+                    'icon': Icons.account_balance_wallet_outlined,
+                  });
+                  _paymentMode = _paymentModes.length - 1;
+                });
+              }
+              Navigator.pop(ctx);
+            },
+            child: Text('Add', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -101,6 +155,15 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
     final total = double.tryParse(_totalController.text) ?? 0.0;
     final advance = double.tryParse(_advanceController.text) ?? 0.0;
     final external = double.tryParse(_externalChargesController.text) ?? 0.0;
+
+    if (advance > total && total > 0) {
+      showAppSnackBar(
+        context,
+        message: 'Advance amount cannot be greater than grand total (₹${total.toStringAsFixed(2)})',
+        isError: true,
+      );
+      return;
+    }
     
     // Collect edited garment prices
     final Map<String, double> editedPrices = {};
@@ -338,31 +401,36 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
           const SizedBox(height: 20),
           ...d.garmentTypes.map((g) {
             final qty = d.garmentQuantities[g] ?? 1;
-              // final unitPrice = qty > 0 ? currentLineTotal / qty : 0.0;
-              
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 40, height: 40,
-                      decoration: BoxDecoration(
-                        color: c.colorPrimary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(g[0].toUpperCase(), style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold, color: c.colorPrimary)),
+            final lineTotal = double.tryParse(_itemControllers[g]?.text ?? '') ?? (d.garmentPrices[g] ?? 0.0);
+            final unitPrice = qty > 0 ? lineTotal / qty : lineTotal;
+            
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40, height: 40,
+                    decoration: BoxDecoration(
+                      color: c.colorPrimary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('${getLocalizedTemplateName(g, g, AppLocalizations.of(context))} (${AppLocalizations.of(context).qty(qty)})', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: c.textDark)),
-                          // Text('₹${unitPrice.toStringAsFixed(0)} each', style: GoogleFonts.poppins(fontSize: 11, color: c.gray)),
-                        ],
-                      ),
+                    alignment: Alignment.center,
+                    child: Text(g[0].toUpperCase(), style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold, color: c.colorPrimary)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${getLocalizedTemplateName(g, g, AppLocalizations.of(context))} (${AppLocalizations.of(context).qty(qty)})', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: c.textDark)),
+                        if (unitPrice > 0)
+                          Text(
+                            '₹${unitPrice.toStringAsFixed(0)} × $qty',
+                            style: GoogleFonts.poppins(fontSize: 11, color: c.gray, fontWeight: FontWeight.w500),
+                          ),
+                      ],
                     ),
+                  ),
                     Container(
                       width: 90,
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -485,11 +553,12 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
                     textAlign: TextAlign.end,
                     style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold, color: c.textDark),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
                       hintText: '0',
+                      hintStyle: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold, color: c.gray),
                     ),
                   ),
                 ),
@@ -521,7 +590,7 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
               Icon(Icons.payment, color: c.colorPrimary, size: 20),
               const SizedBox(width: 8),
               Text(
-                AppLocalizations.of(context).collectionDetails,
+                'Payment Details',
                 style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: c.textDark),
               ),
             ],
@@ -534,7 +603,10 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            decoration: BoxDecoration(border: Border.all(color: c.divider), borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(
+              border: Border.all(color: _advanceError != null ? c.red : c.divider),
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Row(
               children: [
                 Text('₹ ', style: GoogleFonts.poppins(fontSize: 18, color: c.gray)),
@@ -543,12 +615,23 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
                     controller: _advanceController,
                     style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: c.textDark),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(border: InputBorder.none),
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      hintText: '0.00',
+                      hintStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold, color: c.gray),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
+          if (_advanceError != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _advanceError!,
+              style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: c.red),
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -566,13 +649,50 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
             style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.bold, color: c.textDark.withValues(alpha: 0.6), letterSpacing: 1.0),
           ),
           const SizedBox(height: 16),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Expanded(child: _buildPaymentModeBtn(c, 0, Icons.attach_money, AppLocalizations.of(context).cash)),
-              const SizedBox(width: 8),
-              Expanded(child: _buildPaymentModeBtn(c, 1, Icons.credit_card, AppLocalizations.of(context).card)),
-              const SizedBox(width: 8),
-              Expanded(child: _buildPaymentModeBtn(c, 2, Icons.qr_code_scanner, AppLocalizations.of(context).onlineUPI)),
+              ...List.generate(_paymentModes.length, (index) {
+                final mode = _paymentModes[index];
+                return SizedBox(
+                  width: (MediaQuery.of(context).size.width - 56) / 3 - 6,
+                  child: _buildPaymentModeBtn(
+                    c,
+                    index,
+                    mode['icon'] as IconData,
+                    mode['label'] as String,
+                  ),
+                );
+              }),
+              SizedBox(
+                width: (MediaQuery.of(context).size.width - 56) / 3 - 6,
+                child: GestureDetector(
+                  onTap: _showAddPaymentModeDialog,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.transparent,
+                      border: Border.all(color: c.colorPrimary, width: 1.5),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(Icons.add_circle_outline, color: c.colorPrimary, size: 24),
+                        const SizedBox(height: 8),
+                        Text(
+                          '+ Add Mode',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: c.colorPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ],

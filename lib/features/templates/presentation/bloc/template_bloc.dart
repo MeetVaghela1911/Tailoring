@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:uuid/uuid.dart';
 import '../../domain/usecases/add_template_usecase.dart';
 import '../../domain/usecases/delete_template_usecase.dart';
 import '../../domain/usecases/get_templates_usecase.dart';
@@ -48,18 +49,30 @@ class TemplateBloc extends Bloc<TemplateEvent, TemplateState> {
       currentTemplates = List<Template>.from(currentState.templates);
     }
 
+    final templateToAdd = event.template.id.trim().isEmpty
+        ? event.template.copyWith(id: const Uuid().v4())
+        : event.template;
+
     // Optimistic Update
-    final optimisticList = List<Template>.from(currentTemplates)..add(event.template);
+    final optimisticList = List<Template>.from(currentTemplates)..add(templateToAdd);
     emit(TemplatesLoaded(optimisticList));
 
-    final result = await addTemplateUseCase(event.template);
+    final result = await addTemplateUseCase(templateToAdd);
     result.fold(
       (failure) {
         // Revert on failure
         emit(TemplateError(failure.message));
         emit(TemplatesLoaded(currentTemplates));
       },
-      (_) => emit(TemplateAddSuccess(optimisticList, event.template)),
+      (savedTemplate) {
+        final updatedList = optimisticList.map((t) {
+          if (t.id == templateToAdd.id || (t.id.isEmpty && t.name == savedTemplate.name)) {
+            return savedTemplate;
+          }
+          return t;
+        }).toList();
+        emit(TemplateAddSuccess(updatedList, savedTemplate));
+      },
     );
   }
 
@@ -94,6 +107,8 @@ class TemplateBloc extends Bloc<TemplateEvent, TemplateState> {
     DeleteTemplate event,
     Emitter<TemplateState> emit,
   ) async {
+    if (event.id.trim().isEmpty) return;
+
     final currentState = state;
     List<Template> currentTemplates = [];
     if (currentState is TemplatesLoaded) {

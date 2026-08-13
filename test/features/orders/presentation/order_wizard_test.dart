@@ -237,7 +237,8 @@ formData: OrderFormData(garmentTypes: ['Shirt'])));
       await tester.pumpAndSettle();
 
       final nextButton = find.byType(ElevatedButton);
-      await tester.scrollUntilVisible(nextButton, 100);
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
       await tester.tap(nextButton);
       await tester.pumpAndSettle();
 

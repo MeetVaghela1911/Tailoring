@@ -145,39 +145,71 @@ class _CustomersListScreenState extends State<CustomersListScreen> {
                   ),
                 ),
                 Expanded(
-                  child: BlocBuilder<CustomerBloc, CustomerState>(
-                    builder: (context, state) {
-                      if (state is CustomerLoading) {
-                        return Center(child: CircularProgressIndicator(color: c.colorPrimary));
-                      } else if (state is CustomersLoaded) {
-                        final filtered = _filter(state.customers);
-                        
-                        if (state.customers.isEmpty) {
-                          return _buildEmptyState(c, l10n, Icons.people_outline, l10n.noCustomersFound, l10n.addFirstCustomer);
-                        }
-
-                        if (filtered.isEmpty) {
-                          return _buildEmptyState(c, l10n, Icons.search_off, l10n.noCustomersFound, l10n.noMatchingCustomers);
-                        }
-
-                        return ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
-                          itemCount: filtered.length,
-                          itemBuilder: (context, index) {
-                            final customer = filtered[index];
-                            return _CustomerCard(
-                              customer: customer,
-                              c: c,
-                              isDark: isDark,
-                              onTap: () => _openEditCustomer(customer),
-                            );
-                          },
-                        );
-                      } else if (state is CustomerError) {
-                        return Center(child: Text(state.message));
-                      }
-                      return const SizedBox.shrink();
+                  child: RefreshIndicator(
+                    color: c.colorPrimary,
+                    onRefresh: () async {
+                      final bloc = context.read<CustomerBloc>();
+                      bloc.add(LoadCustomers());
+                      await bloc.stream.firstWhere(
+                        (s) => s is CustomersLoaded || s is CustomerError,
+                      );
                     },
+                    child: BlocBuilder<CustomerBloc, CustomerState>(
+                      builder: (context, state) {
+                        if (state is CustomerLoading) {
+                          return SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            child: SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.4,
+                              child: Center(child: CircularProgressIndicator(color: c.colorPrimary)),
+                            ),
+                          );
+                        } else if (state is CustomersLoaded) {
+                          final filtered = _filter(state.customers);
+                          
+                          if (state.customers.isEmpty) {
+                            return SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              child: _buildEmptyState(c, l10n, Icons.people_outline, l10n.noCustomersFound, l10n.addFirstCustomer),
+                            );
+                          }
+
+                          if (filtered.isEmpty) {
+                            return SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              child: _buildEmptyState(c, l10n, Icons.search_off, l10n.noCustomersFound, l10n.noMatchingCustomers),
+                            );
+                          }
+
+                          return ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) {
+                              final customer = filtered[index];
+                              return _CustomerCard(
+                                customer: customer,
+                                c: c,
+                                isDark: isDark,
+                                onTap: () => _openEditCustomer(customer),
+                              );
+                            },
+                          );
+                        } else if (state is CustomerError) {
+                          return SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            child: SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.4,
+                              child: Center(child: Text(state.message)),
+                            ),
+                          );
+                        }
+                        return SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: Container(),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ],

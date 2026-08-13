@@ -61,6 +61,8 @@ import '../service/auth_service.dart';
 import '../service/storage_service.dart';
 import 'supabase_config.dart';
 
+import '../services/notification_service.dart';
+
 final getIt = GetIt.instance;
 
 Future<void> setupDependencies() async {
@@ -71,6 +73,11 @@ Future<void> setupDependencies() async {
   final localDb = LocalDatabase();
   await localDb.init();
   getIt.registerLazySingleton<LocalDatabase>(() => localDb);
+
+  // 🔔 Initialize Notification Service
+  final notificationService = NotificationService();
+  await notificationService.init();
+  getIt.registerLazySingleton<NotificationService>(() => notificationService);
 
   // 🔑 Initialize Firebase
   await Firebase.initializeApp(

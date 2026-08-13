@@ -112,6 +112,7 @@ String getLocalizedPaymentMode(int index, AppLocalizations l10n) {
     case 0: return l10n.paymentCash;
     case 1: return l10n.paymentCard;
     case 2: return l10n.paymentOnline;
-    default: return l10n.paymentCash;
+    case 3: return 'Not Specified';
+    default: return 'Custom';
   }
 }

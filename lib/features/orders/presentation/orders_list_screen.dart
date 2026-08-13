@@ -161,74 +161,85 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                 builder: (context, state) {
                   final filtered = state is OrdersLoaded ? _filterOrders(state.orders) : <OrderEntity>[];
                 
-                return CustomScrollView(
-                  slivers: [
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                      sliver: SliverToBoxAdapter(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildHeader(c, isDark, l10n),
-                            const SizedBox(height: 18),
-                            _buildSearchBar(c, isDark, l10n),
-                            const SizedBox(height: 16),
-                            _buildTabChips(c, l10n),
-                            const SizedBox(height: 20),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    if (state is OrderLoading)
-                      const SliverToBoxAdapter(
-                        child: Center(child: Padding(
-                          padding: EdgeInsets.only(top: 40),
-                          child: CircularProgressIndicator(),
-                        )),
-                      )
-                    else if (state is OrderError)
-                      SliverToBoxAdapter(
-                        child: Center(child: Padding(
-                          padding: const EdgeInsets.only(top: 40),
-                          child: Text(state.message, style: GoogleFonts.poppins(color: c.red)),
-                        )),
-                      )
-                    else if (state is OrdersLoaded)
+                return RefreshIndicator(
+                  color: c.colorPrimary,
+                  onRefresh: () async {
+                    final bloc = context.read<OrderBloc>();
+                    bloc.add(LoadOrders());
+                    await bloc.stream.firstWhere(
+                      (s) => s is OrdersLoaded || s is OrderError,
+                    );
+                  },
+                  child: CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
                       SliverPadding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                              final o = filtered[index];
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: GestureDetector(
-                                  onTap: () async {
-                                    await context.push(AppRoutes.orderDetail, extra: o);
-                                  },
-                                  child: _buildOrderCard(c, isDark, o, l10n, isFirstItem: index == 0),
-                                ),
-                              );
-                            },
-                            childCount: filtered.length,
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                        sliver: SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildHeader(c, isDark, l10n),
+                              const SizedBox(height: 18),
+                              _buildSearchBar(c, isDark, l10n),
+                              const SizedBox(height: 16),
+                              _buildTabChips(c, l10n),
+                              const SizedBox(height: 20),
+                            ],
                           ),
                         ),
                       ),
-                    
-                    if (state is OrdersLoaded && filtered.isEmpty)
-                      SliverToBoxAdapter(
-                        child: AppEmptyState(
-                          icon: Icons.inventory_2_outlined,
-                          title: l10n.noOrdersFound,
-                          message: _searchQuery.isEmpty 
-                            ? 'Tap the + button to create a new order and start tracking your work.'
-                            : 'No orders match your search criteria.',
+
+                      if (state is OrderLoading)
+                        const SliverToBoxAdapter(
+                          child: Center(child: Padding(
+                            padding: EdgeInsets.only(top: 40),
+                            child: CircularProgressIndicator(),
+                          )),
+                        )
+                      else if (state is OrderError)
+                        SliverToBoxAdapter(
+                          child: Center(child: Padding(
+                            padding: const EdgeInsets.only(top: 40),
+                            child: Text(state.message, style: GoogleFonts.poppins(color: c.red)),
+                          )),
+                        )
+                      else if (state is OrdersLoaded)
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final o = filtered[index];
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: GestureDetector(
+                                    onTap: () async {
+                                      await context.push(AppRoutes.orderDetail, extra: o);
+                                    },
+                                    child: _buildOrderCard(c, isDark, o, l10n, isFirstItem: index == 0),
+                                  ),
+                                );
+                              },
+                              childCount: filtered.length,
+                            ),
+                          ),
                         ),
-                      ),
-                    
-                    const SliverToBoxAdapter(child: SizedBox(height: 100)),
-                  ],
+                      
+                      if (state is OrdersLoaded && filtered.isEmpty)
+                        SliverToBoxAdapter(
+                          child: AppEmptyState(
+                            icon: Icons.inventory_2_outlined,
+                            title: l10n.noOrdersFound,
+                            message: _searchQuery.isEmpty 
+                              ? 'Tap the + button to create a new order and start tracking your work.'
+                              : 'No orders match your search criteria.',
+                          ),
+                        ),
+                      
+                      const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                    ],
+                  ),
                 );
               },
             ),
@@ -381,12 +392,15 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text(
-                          o.customerName ?? 'No Name',
-                          style: GoogleFonts.poppins(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: c.textDark,
+                        Flexible(
+                          child: Text(
+                            o.customerName ?? 'No Name',
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: c.textDark,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -409,6 +423,40 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                             ),
                           ),
                         ),
+                        if (o.priorityIndex > 0) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: (o.priorityIndex == 2 ? c.red : c.colorPrimary).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(
+                                color: (o.priorityIndex == 2 ? c.red : c.colorPrimary).withValues(alpha: 0.3),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  o.priorityIndex == 2 ? Icons.bolt : Icons.speed,
+                                  size: 10,
+                                  color: o.priorityIndex == 2 ? c.red : c.colorPrimary,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  getLocalizedPriority(o.priorityIndex, l10n).toUpperCase(),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.4,
+                                    color: o.priorityIndex == 2 ? c.red : c.colorPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const Spacer(),
                         if (isFirstItem)
                           Showcase(
@@ -419,7 +467,9 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                             child: GestureDetector(
                               onTap: () async {
                                 if (o.customerPhone != null && o.customerPhone!.isNotEmpty) {
-                                  final phone = o.customerPhone!.replaceAll(RegExp(r'[^\d+]'), '');
+                                  final phone = o.customerPhone!.startsWith('+91')
+                                      ? o.customerPhone!.replaceAll(RegExp(r'[^\d+]'), '')
+                                      :  "+91${o.customerPhone!.replaceAll(RegExp(r'[^\d+]'), '')}";
                                   final url = Uri.parse('https://wa.me/$phone');
                                   if (await canLaunchUrl(url)) {
                                     await launchUrl(url, mode: LaunchMode.externalApplication);
@@ -434,14 +484,17 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                               },
                               child: Container(
                                 width: 36, height: 36,
+                                alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF25D366).withValues(alpha: 0.1),
+                                  color: const Color(0xFF25D366).withValues(alpha: 0.12),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const FaIcon(
-                                  FontAwesomeIcons.whatsapp,
-                                  color: Color(0xFF25D366),
-                                  size: 16,
+                                child: const Center(
+                                  child: FaIcon(
+                                    FontAwesomeIcons.whatsapp,
+                                    color: Color(0xFF25D366),
+                                    size: 18,
+                                  ),
                                 ),
                               ),
                             ),
@@ -465,14 +518,17 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                             },
                             child: Container(
                               width: 36, height: 36,
+                              alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF25D366).withValues(alpha: 0.1),
+                                color: const Color(0xFF25D366).withValues(alpha: 0.12),
                                 shape: BoxShape.circle,
                               ),
-                              child: const FaIcon(
-                                FontAwesomeIcons.whatsapp,
-                                color: Color(0xFF25D366),
-                                size: 16,
+                              child: const Center(
+                                child: FaIcon(
+                                  FontAwesomeIcons.whatsapp,
+                                  color: Color(0xFF25D366),
+                                  size: 18,
+                                ),
                               ),
                             ),
                           ),
@@ -502,6 +558,37 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                           _buildShortProgressBar(0.5, accentColor), // Placeholder progress
                         if (o.status == 'READY')
                           _buildMarkDeliveredButton(c, l10n),
+                        if (o.status == 'DELIVERED' && o.balanceDue > 0)
+                          GestureDetector(
+                            onTap: () {
+                              final upd = o.copyWith(advancePaid: o.totalAmount);
+                              context.read<OrderBloc>().add(UpdateOrder(upd));
+                              showAppSnackBar(context, message: 'Payment marked as Completed!');
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.amber.shade700, width: 1),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.payment, size: 12, color: Colors.amber.shade900),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'PAYMENT DUE ₹${o.balanceDue.toStringAsFixed(0)}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.amber.shade900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ],

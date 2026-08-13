@@ -29,6 +29,8 @@ class TemplatesScreen extends StatefulWidget {
 class _TemplatesScreenState extends State<TemplatesScreen> {
   String _searchQuery = '';
   String _filterCategory = 'All'; // Should probably be localized or kept as ID
+  bool _isQuickStartExpanded = true;
+  int _previousTemplateCount = 0;
 
   @override
   void initState() {
@@ -43,8 +45,10 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
 
   List<Template> _filter(List<Template> templates) {
     return templates.where((t) {
-      final matchCat = _filterCategory == 'All' || t.category == _filterCategory;
-      final matchQ = _searchQuery.isEmpty ||
+      final matchCat =
+          _filterCategory == 'All' || t.category == _filterCategory;
+      final matchQ =
+          _searchQuery.isEmpty ||
           t.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           t.category.toLowerCase().contains(_searchQuery.toLowerCase());
       return matchCat && matchQ;
@@ -57,11 +61,12 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
 
   void _addSuggested(Template template) {
     // We add it with a new unique ID to distinguish from the static default
-    final newTemplate = template.copyWith(
-      id: const Uuid().v4(),
-    );
+    final newTemplate = template.copyWith(id: const Uuid().v4());
     context.read<TemplateBloc>().add(AddTemplate(newTemplate));
-    showAppSnackBar(context, message: AppLocalizations.of(context).addedToTemplates(template.name));
+    showAppSnackBar(
+      context,
+      message: AppLocalizations.of(context).addedToTemplates(template.name),
+    );
   }
 
   @override
@@ -82,12 +87,18 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       body: Stack(
         children: [
           Positioned(
-            top: 0, left: 0, right: 0,
+            top: 0,
+            left: 0,
+            right: 0,
             height: MediaQuery.of(context).size.height * 0.42,
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [topGradient, midGradient, c.background.withValues(alpha: 0.0)],
+                  colors: [
+                    topGradient,
+                    midGradient,
+                    c.background.withValues(alpha: 0.0),
+                  ],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -96,131 +107,292 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
           ),
 
           SafeArea(
-            child: BlocBuilder<TemplateBloc, TemplateState>(
-              builder: (context, state) {
-                if (state is TemplateLoading) {
-                  return Center(child: CircularProgressIndicator(color: c.colorPrimary));
-                } else if (state is TemplatesLoaded) {
-                  final filterOptions = _getFilterOptions(state.templates);
-                  final filtered = _filter(state.templates);
-                  
-                  return CustomScrollView(
-                    slivers: [
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                        sliver: SliverToBoxAdapter(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: BlocListener<TemplateBloc, TemplateState>(
+              listener: (context, state) {
+                if (state is TemplatesLoaded) {
+                  final currentCount = state.templates.length;
+
+                  // Automatically collapse Quick Start only when
+                  // the user reaches 2 templates for the first time.
+                  if (currentCount >= 2 && _previousTemplateCount < 2) {
+                    setState(() {
+                      _isQuickStartExpanded = false;
+                    });
+                  }
+
+                  _previousTemplateCount = currentCount;
+                }
+              },
+              child: RefreshIndicator(
+                color: c.colorPrimary,
+                onRefresh: () async {
+                  final bloc = context.read<TemplateBloc>();
+                  bloc.add(LoadTemplates());
+                  await bloc.stream.firstWhere(
+                    (s) => s is TemplatesLoaded || s is TemplateError,
+                  );
+                },
+                child: BlocBuilder<TemplateBloc, TemplateState>(
+                  builder: (context, state) {
+                    if (state is TemplateLoading) {
+                      return SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.5,
+                          child: Center(
+                            child: CircularProgressIndicator(color: c.colorPrimary),
+                          ),
+                        ),
+                      );
+                    } else if (state is TemplatesLoaded) {
+                      final filterOptions = _getFilterOptions(state.templates);
+                      final filtered = _filter(state.templates);
+
+                      return CustomScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: [
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                            sliver: SliverToBoxAdapter(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        l10n.stitchBusiness,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 1.2,
+                                          color: c.textDark.withValues(
+                                            alpha: 0.6,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
                                   Text(
-                                    l10n.stitchBusiness,
+                                    l10n.templates,
                                     style: GoogleFonts.poppins(
-                                      fontSize: 11, fontWeight: FontWeight.bold,
-                                      letterSpacing: 1.2, color: c.textDark.withValues(alpha: 0.6),
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.bold,
+                                      color: c.textDark,
+                                      height: 1.15,
                                     ),
                                   ),
+                                  Text(
+                                    l10n.yourCustomTemplates,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      color: c.gray,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 18),
+
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: isDark ? c.cardDark : Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.06,
+                                          ),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: TextField(
+                                      onChanged: (v) =>
+                                          setState(() => _searchQuery = v),
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 13,
+                                        color: c.textDark,
+                                      ),
+                                      decoration: InputDecoration(
+                                        hintText: l10n.searchTemplates,
+                                        hintStyle: GoogleFonts.poppins(
+                                          fontSize: 13,
+                                          color: c.gray,
+                                        ),
+                                        prefixIcon: Icon(
+                                          Icons.search,
+                                          color: c.gray,
+                                          size: 20,
+                                        ),
+                                        suffixIcon: _searchQuery.isNotEmpty
+                                            ? IconButton(
+                                                icon: Icon(
+                                                  Icons.close,
+                                                  color: c.gray,
+                                                  size: 18,
+                                                ),
+                                                onPressed: () => setState(
+                                                  () => _searchQuery = '',
+                                                ),
+                                              )
+                                            : null,
+                                        border: InputBorder.none,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              vertical: 14,
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+
+                                  if (filterOptions.length > 1)
+                                    SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: Row(
+                                        children: filterOptions.map((cat) {
+                                          final sel = _filterCategory == cat;
+                                          final label =
+                                              (cat == 'All' || cat == 'सभी')
+                                              ? l10n.all
+                                              : getLocalizedCategory(cat, l10n);
+                                          return GestureDetector(
+                                            onTap: () => setState(
+                                              () => _filterCategory = cat,
+                                            ),
+                                            child: AnimatedContainer(
+                                              duration: const Duration(
+                                                milliseconds: 200,
+                                              ),
+                                              margin: const EdgeInsets.only(
+                                                right: 8,
+                                              ),
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 14,
+                                                vertical: 8,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: sel
+                                                    ? c.colorPrimary
+                                                    : (isDark
+                                                          ? c.cardDark
+                                                          : Colors.white),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                                boxShadow: sel
+                                                    ? [
+                                                        BoxShadow(
+                                                          color: c.colorPrimary
+                                                              .withValues(
+                                                                alpha: 0.3,
+                                                              ),
+                                                          blurRadius: 8,
+                                                          offset: const Offset(
+                                                            0,
+                                                            3,
+                                                          ),
+                                                        ),
+                                                      ]
+                                                    : [],
+                                              ),
+                                              child: Text(
+                                                label,
+                                                style: GoogleFonts.poppins(
+                                                  fontSize: 12,
+                                                  fontWeight: sel
+                                                      ? FontWeight.bold
+                                                      : FontWeight.w500,
+                                                  color: sel
+                                                      ? Colors.white
+                                                      : c.gray,
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 20),
+
+                                  _buildSuggestedSection(
+                                    c,
+                                    isDark,
+                                    state.templates.length,
+                                  ),
+
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    l10n.yourCollection,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: c.textDark,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
                                 ],
                               ),
-                              const SizedBox(height: 2),
-                              Text(l10n.templates, style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.bold, color: c.textDark, height: 1.15)),
-                              Text(l10n.yourCustomTemplates, style: GoogleFonts.poppins(fontSize: 13, color: c.gray)),
-                              const SizedBox(height: 18),
+                            ),
+                          ),
 
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: isDark ? c.cardDark : Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
-                                ),
-                                child: TextField(
-                                  onChanged: (v) => setState(() => _searchQuery = v),
-                                  style: GoogleFonts.poppins(fontSize: 13, color: c.textDark),
-                                  decoration: InputDecoration(
-                                    hintText: l10n.searchTemplates,
-                                    hintStyle: GoogleFonts.poppins(fontSize: 13, color: c.gray),
-                                    prefixIcon: Icon(Icons.search, color: c.gray, size: 20),
-                                    suffixIcon: _searchQuery.isNotEmpty
-                                        ? IconButton(
-                                            icon: Icon(Icons.close, color: c.gray, size: 18),
-                                            onPressed: () => setState(() => _searchQuery = ''),
-                                          )
-                                        : null,
-                                    border: InputBorder.none,
-                                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                          if (state.templates.isEmpty)
+                            SliverToBoxAdapter(
+                              child: _buildEmptyState(
+                                c,
+                                Icons.checkroom_outlined,
+                                l10n.noTemplatesYet,
+                                l10n.createFirstTemplate,
+                              ),
+                            )
+                          else if (filtered.isEmpty)
+                            SliverToBoxAdapter(
+                              child: _buildEmptyState(
+                                c,
+                                Icons.search_off,
+                                l10n.noMatchingTemplates,
+                                l10n.trySearchingDifferent,
+                              ),
+                            )
+                          else
+                            SliverPadding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              sliver: SliverList(
+                                delegate: SliverChildBuilderDelegate(
+                                  (context, index) => _buildTemplateCard(
+                                    c,
+                                    isDark,
+                                    filtered[index],
                                   ),
+                                  childCount: filtered.length,
                                 ),
                               ),
-                              const SizedBox(height: 14),
+                            ),
 
-                              if (filterOptions.length > 1)
-                                SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Row(
-                                    children: filterOptions.map((cat) {
-                                      final sel = _filterCategory == cat;
-                                      final label = (cat == 'All' || cat == 'सभी') ? l10n.all : getLocalizedCategory(cat, l10n);
-                                      return GestureDetector(
-                                        onTap: () => setState(() => _filterCategory = cat),
-                                        child: AnimatedContainer(
-                                          duration: const Duration(milliseconds: 200),
-                                          margin: const EdgeInsets.only(right: 10),
-                                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-                                          decoration: BoxDecoration(
-                                            color: sel ? c.colorPrimary : Colors.transparent,
-                                            border: Border.all(color: sel ? c.colorPrimary : c.divider),
-                                            borderRadius: BorderRadius.circular(24),
-                                          ),
-                                          child: Text(label, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: sel ? Colors.white : c.textDark)),
-                                        ),
-                                      );
-                                    }).toList(),
-                                  ),
-                                ),
-                               const SizedBox(height: 20),
-                               
-                               _buildSuggestedSection(c, isDark),
-                               
-                               const SizedBox(height: 24),
-                               Text(
-                                 l10n.yourCollection,
-                                 style: GoogleFonts.poppins(
-                                   fontSize: 16,
-                                   fontWeight: FontWeight.bold,
-                                   color: c.textDark,
-                                 ),
-                               ),
-                               const SizedBox(height: 12),
-                             ],
-                           ),
-                         ),
-                       ),
-
-                      if (state.templates.isEmpty)
-                        SliverToBoxAdapter(child: _buildEmptyState(c, Icons.checkroom_outlined, l10n.noTemplatesYet, l10n.createFirstTemplate))
-                      else if (filtered.isEmpty)
-                        SliverToBoxAdapter(child: _buildEmptyState(c, Icons.search_off, l10n.noMatchingTemplates, l10n.trySearchingDifferent))
-                      else
-                        SliverPadding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          sliver: SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) => _buildTemplateCard(c, isDark, filtered[index]),
-                              childCount: filtered.length,
+                          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                        ],
+                      );
+                    } else if (state is TemplateError) {
+                      return SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.5,
+                          child: Center(
+                            child: Text(
+                              state.message,
+                              style: GoogleFonts.poppins(color: c.red),
                             ),
                           ),
                         ),
-                      
-                      const SliverToBoxAdapter(child: SizedBox(height: 100)),
-                    ],
-                  );
-                } else if (state is TemplateError) {
-                  return Center(child: Text(state.message));
-                }
-                return const SizedBox.shrink();
-              },
+                      );
+                    }
+                    return SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Container(),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
 
@@ -237,11 +409,18 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   await context.push(AppRoutes.addTemplate);
                 },
                 child: Container(
-                  width: 56, height: 56,
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
                     color: c.colorPrimary,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: c.colorPrimary.withValues(alpha: 0.45), blurRadius: 18, offset: const Offset(0, 6))],
+                    boxShadow: [
+                      BoxShadow(
+                        color: c.colorPrimary.withValues(alpha: 0.45),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
                   child: const Icon(Icons.add, color: Colors.white, size: 28),
                 ),
@@ -253,18 +432,22 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     );
   }
 
-  Widget _buildEmptyState(AppColorScheme c, IconData icon, String title, String subtitle) {
-    return AppEmptyState(
-      icon: icon,
-      title: title,
-      message: subtitle,
-    );
+  Widget _buildEmptyState(
+    AppColorScheme c,
+    IconData icon,
+    String title,
+    String subtitle,
+  ) {
+    return AppEmptyState(icon: icon, title: title, message: subtitle);
   }
 
   Widget _buildTemplateCard(AppColorScheme c, bool isDark, Template t) {
     final l10n = AppLocalizations.of(context);
     final tagBg = c.colorPrimary.withValues(alpha: 0.08);
-    final displayTags = t.fields.take(3).map((f) => getLocalizedMeasurementField(f, l10n)).toList();
+    final displayTags = t.fields
+        .take(3)
+        .map((f) => getLocalizedMeasurementField(f, l10n))
+        .toList();
     final extra = t.fields.length - displayTags.length;
     final iconData = AppIcons.getIcon(t.iconCodePoint);
 
@@ -276,15 +459,26 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
         decoration: BoxDecoration(
           color: isDark ? c.cardDark : Colors.white,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 14, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Stack(
           children: [
             Positioned(
-              top: -28, right: -28,
+              top: -28,
+              right: -28,
               child: Container(
-                width: 96, height: 96,
-                decoration: BoxDecoration(color: c.colorPrimary.withValues(alpha: 0.07), shape: BoxShape.circle),
+                width: 96,
+                height: 96,
+                decoration: BoxDecoration(
+                  color: c.colorPrimary.withValues(alpha: 0.07),
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
             Padding(
@@ -293,8 +487,12 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    width: 48, height: 48,
-                    decoration: BoxDecoration(color: c.colorPrimary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: c.colorPrimary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: Icon(iconData, color: c.colorPrimary, size: 24),
                   ),
                   const SizedBox(width: 14),
@@ -302,26 +500,69 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(getLocalizedCategory(t.category, l10n), style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.bold, color: c.gray, letterSpacing: 0.5)),
-                        Text(getLocalizedTemplateName(t.id, t.name, l10n), style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: c.textDark, height: 1.2)),
+                        Text(
+                          getLocalizedCategory(t.category, l10n),
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: c.gray,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        Text(
+                          getLocalizedTemplateName(t.id, t.name, l10n),
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: c.textDark,
+                            height: 1.2,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
                           children: [
-                            ...displayTags.map((tag) => Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(color: tagBg, borderRadius: BorderRadius.circular(6)),
-                              child: Text(tag, style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.bold, color: c.colorPrimary)),
-                            )),
-                            if (extra > 0)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            ...displayTags.map(
+                              (tag) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.withValues(alpha: 0.12),
+                                  color: tagBg,
                                   borderRadius: BorderRadius.circular(6),
                                 ),
-                                child: Text(l10n.moreFields(extra), style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.bold, color: c.gray)),
+                                child: Text(
+                                  tag,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: c.colorPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (extra > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? Colors.white.withValues(alpha: 0.08)
+                                      : Colors.grey.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  l10n.moreFields(extra),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: c.gray,
+                                  ),
+                                ),
                               ),
                           ],
                         ),
@@ -343,10 +584,16 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     );
   }
 
-
-  Widget _buildSuggestedSection(AppColorScheme c, bool isDark) {
+  Widget _buildSuggestedSection(
+    AppColorScheme c,
+    bool isDark,
+    int templateCount,
+  ) {
     final l10n = AppLocalizations.of(context);
     final suggested = DefaultTemplates.all;
+
+    final isCollapsible = templateCount >= 2;
+
     return Showcase(
       key: WalkthroughKeys.templatesQuickStart,
       description: l10n.walkthroughQuickStartTemplates,
@@ -355,39 +602,74 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                l10n.quickStartTemplates,
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: c.colorPrimary,
+          GestureDetector(
+            onTap: isCollapsible
+                ? () {
+                    setState(() {
+                      _isQuickStartExpanded = !_isQuickStartExpanded;
+                    });
+                  }
+                : null,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      l10n.quickStartTemplates,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: c.colorPrimary,
+                      ),
+                    ),
+
+                    if (isCollapsible) ...[
+                      const SizedBox(width: 6),
+                      Icon(
+                        _isQuickStartExpanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: c.colorPrimary,
+                        size: 20,
+                      ),
+                    ],
+                  ],
                 ),
-              ),
-              Icon(Icons.auto_awesome, color: c.colorPrimary, size: 16),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 110,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: suggested.length,
-              padding: EdgeInsets.zero,
-              itemBuilder: (context, index) {
-                final t = suggested[index];
-                return _buildSuggestedCard(c, isDark, t, l10n);
-              },
+
+                Icon(Icons.auto_awesome, color: c.colorPrimary, size: 16),
+              ],
             ),
           ),
+
+          if (_isQuickStartExpanded) ...[
+            const SizedBox(height: 12),
+
+            SizedBox(
+              height: 110,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: suggested.length,
+                padding: EdgeInsets.zero,
+                itemBuilder: (context, index) {
+                  final t = suggested[index];
+
+                  return _buildSuggestedCard(c, isDark, t, l10n);
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildSuggestedCard(AppColorScheme c, bool isDark, Template t, AppLocalizations l10n) {
+  Widget _buildSuggestedCard(
+    AppColorScheme c,
+    bool isDark,
+    Template t,
+    AppLocalizations l10n,
+  ) {
     return GestureDetector(
       onTap: () => _addSuggested(t),
       child: Container(
@@ -403,7 +685,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 8,
               offset: const Offset(0, 2),
-            )
+            ),
           ],
         ),
         child: Column(
@@ -436,10 +718,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             const SizedBox(height: 2),
             Text(
               AppLocalizations.of(context).fieldsCount(t.fields.length),
-              style: GoogleFonts.poppins(
-                fontSize: 10,
-                color: c.gray,
-              ),
+              style: GoogleFonts.poppins(fontSize: 10, color: c.gray),
             ),
           ],
         ),
