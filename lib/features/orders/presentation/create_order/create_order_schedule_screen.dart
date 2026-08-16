@@ -102,7 +102,6 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
   }
 
   Widget _buildHeader(AppColorScheme c) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Column(
@@ -122,18 +121,7 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
                   color: c.textDark.withValues(alpha: 0.7),
                 ),
               ),
-              Container(
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.1)
-                      : Colors.black.withValues(alpha: 0.05),
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  icon: Icon(Icons.more_horiz, color: c.textDark, size: 20),
-                  onPressed: () {},
-                ),
-              ),
+              const SizedBox(width: 40),
             ],
           ),
           const SizedBox(height: 24),
@@ -343,13 +331,13 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
         Row(
           children: [
             Expanded(
-              child: _priorityChip(c, 0, AppLocalizations.of(context).normal),
+              child: _priorityChip(c, 1, AppLocalizations.of(context).normal),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: _priorityChip(
                 c,
-                1,
+                2,
                 AppLocalizations.of(context).high,
                 color: c.colorPrimary,
               ),
@@ -358,14 +346,14 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
             Expanded(
               child: _priorityChip(
                 c,
-                2,
+                3,
                 AppLocalizations.of(context).urgent,
                 color: c.red,
               ),
             ),
           ],
         ),
-        if (_priorityIndex > 0) ...[
+        if (_priorityIndex > 1) ...[
           const SizedBox(height: 12),
           InkWell(
             onTap: () => setState(() => _applySurcharge = !_applySurcharge),
@@ -506,7 +494,7 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
             child: DropdownButton<String>(
               value: tailors.contains(_selectedTailor)
                   ? _selectedTailor
-                  : tailors.first,
+                  : 'Unassigned',
               isExpanded: true,
               icon: Icon(Icons.keyboard_arrow_down, color: c.colorPrimary),
               dropdownColor: isDark ? c.background : Colors.white,
@@ -556,7 +544,7 @@ class _CreateOrderScheduleScreenState extends State<CreateOrderScheduleScreen> {
           }
           final currentData = getIt<OrderWizardBloc>().state.formData;
           double surchargeAmount = 0.0;
-          if (_priorityIndex > 0 && _applySurcharge) {
+          if (_priorityIndex > 1 && _applySurcharge) {
             double itemSum = 0.0;
             currentData.garmentPrices.forEach((key, price) {
               final qty = currentData.garmentQuantities[key] ?? 1;

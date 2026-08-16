@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum AppPlan {
@@ -29,7 +30,10 @@ class PlanService {
   /// Sync the plan from the database profile value.
   /// Call this after fetching the user profile from Supabase.
   Future<void> syncPlanFromProfile(String planValue) async {
-    final plan = planValue == 'premium' ? AppPlan.premium : AppPlan.free;
+    final normalized = planValue.trim().toLowerCase();
+    final isPrem = normalized == 'premium' || normalized == 'pro' || normalized == 'paid';
+    final plan = isPrem ? AppPlan.premium : AppPlan.free;
+    debugPrint('PlanService: Received plan profile value "$planValue" -> resolved to: ${plan.name}');
     await setPlan(plan);
   }
 }

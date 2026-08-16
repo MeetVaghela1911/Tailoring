@@ -7,6 +7,9 @@ import '../domain/usecases/login_usecase.dart';
 import '../domain/usecases/logout_usecase.dart';
 import '../domain/usecases/signup_usecase.dart';
 import '../../../../core/usecase/usecase.dart';
+import '../../../../core/services/plan_service.dart';
+import '../../../../core/utility/dependency_injection.dart';
+import '../../sync/domain/services/sync_manager.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
 
@@ -73,9 +76,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       email: event.email,
       password: event.password,
     ));
-    result.fold(
-      (failure) => emit(AuthError(failure.message)),
-      (user) => emit(AuthAuthenticated(user)),
+    await result.fold(
+      (failure) async => emit(AuthError(failure.message)),
+      (user) async {
+        final profilePlan = user.profile?.plan ?? 'free';
+        await getIt<PlanService>().syncPlanFromProfile(profilePlan);
+        await getIt<SyncManager>().syncData();
+        emit(AuthAuthenticated(user));
+      },
     );
   }
 
@@ -90,8 +98,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
   }
 
-  void _onAuthStatusChanged(AuthStatusChanged event, Emitter<AuthState> emit) {
+  Future<void> _onAuthStatusChanged(AuthStatusChanged event, Emitter<AuthState> emit) async {
     if (event.user != null) {
+      final profilePlan = event.user!.profile?.plan ?? 'free';
+      await getIt<PlanService>().syncPlanFromProfile(profilePlan);
+      await getIt<SyncManager>().syncData();
       emit(AuthAuthenticated(event.user!));
     } else {
       emit(AuthUnauthenticated());
@@ -103,10 +114,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     final result = await _getCurrentUserUseCase(NoParams());
-    result.fold(
-      (failure) => null, // silently ignore refresh failures
-      (user) {
-        if (user != null) emit(AuthAuthenticated(user));
+    await result.fold(
+      (failure) async => null, // silently ignore refresh failures
+      (user) async {
+        if (user != null) {
+          final profilePlan = user.profile?.plan ?? 'free';
+          await getIt<PlanService>().syncPlanFromProfile(profilePlan);
+          await getIt<SyncManager>().syncData();
+          emit(AuthAuthenticated(user));
+        }
       },
     );
   }

@@ -14,8 +14,11 @@ import 'package:tailoring_flutter/l10n/app_localizations.dart';
 
 
 import '../data/order_form_data.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/utility/dependency_injection.dart';
 import 'bloc/order_wizard_bloc.dart';
+
+import '../../../core/constants/default_templates.dart';
 
 // ─────────────────────────────────────────────
 // Data model
@@ -25,6 +28,18 @@ class _MeasurementField {
   final IconData icon;
 
   const _MeasurementField(this.label, this.icon);
+}
+
+IconData _getIconForField(String label) {
+  final l = label.toLowerCase();
+  if (l.contains('length') || l.contains('height')) return Icons.height;
+  if (l.contains('waist')) return Icons.arrow_upward;
+  if (l.contains('hip')) return Icons.arrow_downward;
+  if (l.contains('bust') || l.contains('chest')) return Icons.horizontal_rule;
+  if (l.contains('shoulder')) return Icons.arrow_upward;
+  if (l.contains('sleeve') || l.contains('arm')) return Icons.power_input;
+  if (l.contains('neck') || l.contains('depth')) return Icons.cut;
+  return Icons.straighten;
 }
 
 const _garmentMeasurements = <String, List<_MeasurementField>>{
@@ -100,7 +115,7 @@ class _TakeMeasurementsScreenState extends State<TakeMeasurementsScreen>
   late Map<String, Map<String, TextEditingController>> _controllers;
   late Map<String, List<_MeasurementField>> _garmentFields;
   bool _unitIsInches = true;
-  bool _setAsDefault = false;
+  bool _setAsDefault = true;
   int _activeGarmentIndex = 0;
   late Map<String, TextEditingController> _notesControllers;
 
@@ -126,56 +141,141 @@ class _TakeMeasurementsScreenState extends State<TakeMeasurementsScreen>
     final templateState = context.read<TemplateBloc>().state;
 
     for (final garment in widget.garmentTypes) {
-      List<_MeasurementField> fields = _garmentMeasurements[garment] ?? [];
+      List<_MeasurementField> fields = [];
 
-      // If not in standard measurements, check custom templates
-      if (fields.isEmpty && templateState is TemplatesLoaded) {
-        final template = templateState.templates.firstWhere(
-          (t) => t.name == garment || t.id == garment,
-          orElse: () => Template(
-            id: garment,
-            name: garment,
-            category: 'Other',
-            iconCodePoint: 0,
-            fields: const [],
-            basePrice: 0.0,
-          ),
-        );
-        fields = template.fields
-            .map((f) => _MeasurementField(f, Icons.straighten))
-            .toList();
+      // 1. Check loaded templates from TemplateBloc FIRST
+      Template? matchedTemplate;
+      if (templateState is TemplatesLoaded) {
+        matchedTemplate = templateState.templates.where(
+          (t) =>
+              t.id == garment ||
+              t.name == garment ||
+              t.id.toLowerCase() == garment.toLowerCase() ||
+              t.name.toLowerCase() == garment.toLowerCase(),
+        ).firstOrNull;
+
+        if (matchedTemplate != null && matchedTemplate.fields.isNotEmpty) {
+          fields = matchedTemplate.fields
+              .map((f) => _MeasurementField(f, _getIconForField(f)))
+              .toList();
+        }
       }
 
-      _garmentFields[garment] = fields;
-      
+      // 2. Check DefaultTemplates if not found in custom templates
+      if (fields.isEmpty) {
+        final defMatch = DefaultTemplates.all.where(
+          (t) =>
+              t.id == garment ||
+              t.name == garment ||
+              t.id.toLowerCase() == garment.toLowerCase() ||
+              t.name.toLowerCase() == garment.toLowerCase(),
+        ).firstOrNull;
+
+        if (defMatch != null && defMatch.fields.isNotEmpty) {
+          fields = defMatch.fields
+              .map((f) => _MeasurementField(f, _getIconForField(f)))
+              .toList();
+        }
+      }
+
+      // 3. Fallback to hardcoded _garmentMeasurements
+      if (fields.isEmpty) {
+        fields = List.from(_garmentMeasurements[garment] ??
+            _garmentMeasurements.entries
+                .where((e) => e.key.toLowerCase() == garment.toLowerCase())
+                .firstOrNull
+                ?.value ??
+            []);
+      }
+
       // Pre-fill from initial measurements if available
       final Map<String, TextEditingController> garmentCtrls = {};
-      final OrderFormData? sourceData = widget.isOrderFlow 
-          ? getIt<OrderWizardBloc>().state.formData 
+      final OrderFormData? sourceData = widget.isOrderFlow
+          ? getIt<OrderWizardBloc>().state.formData
           : widget.initialData;
 
-      final initialMeasurementsStr = sourceData?.measurements[garment] ?? '';
-      final Map<String, String> initialValues = {};
-      
-      if (initialMeasurementsStr.isNotEmpty) {
-        final parts = initialMeasurementsStr.split(', ');
-        for (var part in parts) {
-          final kv = part.split(':');
-          if (kv.length == 2) {
-            initialValues[kv[0]] = kv[1];
+      String initialMeasurementsStr = sourceData?.measurements[garment] ?? '';
+      if (initialMeasurementsStr.isEmpty && matchedTemplate != null) {
+        initialMeasurementsStr = sourceData?.measurements[matchedTemplate.id] ??
+            sourceData?.measurements[matchedTemplate.name] ??
+            '';
+      }
+
+      if (initialMeasurementsStr.isEmpty && sourceData?.measurements != null) {
+        for (var entry in sourceData!.measurements.entries) {
+          final k = entry.key.trim().toLowerCase();
+          final g = garment.trim().toLowerCase();
+          if (k == g || (matchedTemplate != null && (k == matchedTemplate.id.toLowerCase() || k == matchedTemplate.name.toLowerCase()))) {
+            initialMeasurementsStr = entry.value;
+            break;
           }
         }
       }
 
+      // Fallback to default profile saved in SharedPreferences if available
+      final customerId = sourceData?.customerId;
+      final prefs = getIt.isRegistered<SharedPreferences>() ? getIt<SharedPreferences>() : null;
+      if (prefs != null) {
+        bool hasDefault = false;
+        if (customerId != null && customerId.isNotEmpty) {
+          hasDefault = prefs.containsKey('default_measurements_${customerId}_$garment');
+          if (initialMeasurementsStr.isEmpty) {
+            initialMeasurementsStr = prefs.getString('default_measurements_${customerId}_$garment') ?? '';
+          }
+        }
+        if (initialMeasurementsStr.isEmpty) {
+          initialMeasurementsStr = prefs.getString('default_measurements_global_$garment') ?? '';
+        }
+        if (hasDefault) {
+          _setAsDefault = true;
+        }
+      }
+
+      final Map<String, String> initialValues = {};
+      if (initialMeasurementsStr.isNotEmpty) {
+        final parts = initialMeasurementsStr.split(RegExp(r',\s*'));
+        for (var part in parts) {
+          final kv = part.split(':');
+          if (kv.length == 2) {
+            final key = kv[0].trim();
+            var val = kv[1].trim();
+            if (key == '__UNIT__') {
+              _unitIsInches = (val.toLowerCase() != 'cm');
+            } else {
+              val = val.replaceAll(RegExp(r'\s*(in|cm)$', caseSensitive: false), '').trim();
+              initialValues[key] = val;
+            }
+          }
+        }
+      }
+
+      // 4. If fields list is STILL empty (e.g. template was deleted), extract field names dynamically from initialValues!
+      if (fields.isEmpty && initialValues.isNotEmpty) {
+        fields = initialValues.keys
+            .map((k) => _MeasurementField(k, _getIconForField(k)))
+            .toList();
+      }
+
+      _garmentFields[garment] = fields;
+
       for (final f in fields) {
-        garmentCtrls[f.label] = TextEditingController(text: initialValues[f.label] ?? '');
+        final val = initialValues[f.label] ??
+            initialValues.entries
+                .where((e) => e.key.trim().toLowerCase() == f.label.trim().toLowerCase())
+                .firstOrNull
+                ?.value ??
+            '';
+        garmentCtrls[f.label] = TextEditingController(text: val);
       }
       _controllers[garment] = garmentCtrls;
-      
+
       // Initialize notes controller for this garment
-      _notesControllers[garment] = TextEditingController(
-        text: sourceData?.measurementNotes[garment] ?? '',
-      );
+      String noteText = sourceData?.measurementNotes[garment] ??
+          (matchedTemplate != null ? (sourceData?.measurementNotes[matchedTemplate.id] ?? sourceData?.measurementNotes[matchedTemplate.name] ?? '') : '');
+      if (noteText.isEmpty && customerId != null && customerId.isNotEmpty && prefs != null) {
+        noteText = prefs.getString('default_notes_${customerId}_$garment') ?? '';
+      }
+      _notesControllers[garment] = TextEditingController(text: noteText);
     }
   }
 
@@ -681,27 +781,74 @@ class _TakeMeasurementsScreenState extends State<TakeMeasurementsScreen>
                 ),
                 elevation: 0,
               ),
-              onPressed: () {
+              onPressed: () async {
+                final unitStr = _unitIsInches ? 'in' : 'cm';
                 final Map<String, String> formattedMeasurements = {};
+                final Map<String, String> formattedNotes = {};
+                final templateState = context.read<TemplateBloc>().state;
+
                 for (final garment in widget.garmentTypes) {
                   final map = _controllers[garment] ?? {};
                   final buffer = StringBuffer();
                   map.forEach((label, ctrl) {
-                    buffer.write('$label:${ctrl.text}, ');
+                    final val = ctrl.text.trim();
+                    if (val.isNotEmpty) {
+                      buffer.write('$label:$val $unitStr, ');
+                    }
                   });
+                  buffer.write('__UNIT__:$unitStr, ');
                   var str = buffer.toString();
                   if (str.endsWith(', ')) str = str.substring(0, str.length - 2);
+
                   formattedMeasurements[garment] = str;
+                  final note = _notesControllers[garment]?.text.trim() ?? '';
+                  formattedNotes[garment] = note;
+
+                  if (templateState is TemplatesLoaded) {
+                    final matched = templateState.templates.where(
+                      (t) =>
+                          t.id == garment ||
+                          t.name == garment ||
+                          t.id.toLowerCase() == garment.toLowerCase() ||
+                          t.name.toLowerCase() == garment.toLowerCase(),
+                    ).firstOrNull;
+
+                    if (matched != null) {
+                      formattedMeasurements[matched.id] = str;
+                      formattedMeasurements[matched.name] = str;
+                      formattedNotes[matched.id] = note;
+                      formattedNotes[matched.name] = note;
+                    }
+                  }
                 }
 
+                final prefs = getIt.isRegistered<SharedPreferences>() ? getIt<SharedPreferences>() : null;
+                final customerId = getIt<OrderWizardBloc>().state.formData.customerId;
+                if (prefs != null) {
+                  for (final garment in widget.garmentTypes) {
+                    if (_setAsDefault) {
+                      if (formattedMeasurements[garment] != null) {
+                        if (customerId != null && customerId.isNotEmpty) {
+                          await prefs.setString('default_measurements_${customerId}_$garment', formattedMeasurements[garment]!);
+                          await prefs.setString('default_notes_${customerId}_$garment', _notesControllers[garment]?.text.trim() ?? '');
+                        }
+                        await prefs.setString('default_measurements_global_$garment', formattedMeasurements[garment]!);
+                      }
+                    } else {
+                      if (customerId != null && customerId.isNotEmpty) {
+                        await prefs.remove('default_measurements_${customerId}_$garment');
+                        await prefs.remove('default_notes_${customerId}_$garment');
+                      }
+                    }
+                  }
+                }
+
+                if (!mounted) return;
                 if (widget.isOrderFlow) {
                   final currentData = getIt<OrderWizardBloc>().state.formData;
                   final updated = currentData.copyWith(
                     measurements: formattedMeasurements,
-                    measurementNotes: Map.fromIterables(
-                      widget.garmentTypes,
-                      widget.garmentTypes.map((g) => _notesControllers[g]!.text.trim()),
-                    ),
+                    measurementNotes: formattedNotes,
                   );
                   getIt<OrderWizardBloc>().add(UpdateOrderData(updated));
                   context.push(AppRoutes.createOrderSchedule);
@@ -789,6 +936,7 @@ class _TakeMeasurementsScreenState extends State<TakeMeasurementsScreen>
               Expanded(
                 child: TextField(
                   controller: ctrls[field.label],
+                  textInputAction: TextInputAction.next,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
@@ -853,6 +1001,7 @@ class _TakeMeasurementsScreenState extends State<TakeMeasurementsScreen>
             Expanded(
               child: TextField(
                 controller: ctrl,
+                textInputAction: TextInputAction.next,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),

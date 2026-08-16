@@ -91,6 +91,14 @@ class SettingsScreen extends StatelessWidget {
                   l10n.shopDetails,
                   onTap: () => context.push(AppRoutes.shopDetails),
                 ),
+                _buildSettingsTile(
+                  context,
+                  c,
+                  isDark,
+                  Icons.account_balance_wallet_outlined,
+                  'Finance & Payments',
+                  onTap: () => context.push(AppRoutes.financeManagement),
+                ),
                 // DO NOT REMOVE: Staff Members (hidden for now)
                 // _buildSettingsTile(
                 //   context, c, isDark,

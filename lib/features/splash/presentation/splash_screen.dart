@@ -150,6 +150,8 @@ class _SplashScreenState extends State<SplashScreen>
       final currentState = authBloc.state;
 
       if (currentState is AuthAuthenticated) {
+        final profilePlan = currentState.user.profile?.plan ?? 'free';
+        getIt<PlanService>().syncPlanFromProfile(profilePlan);
         _handleNavigation(AppRoutes.home);
         return;
       }
@@ -210,11 +212,13 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     final colors = getThemeBaseColors(context);
 
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
+      SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.white,
+        statusBarIconBrightness: isDarkMode ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: colors.background,
       ),
     );
 
@@ -487,11 +491,11 @@ class _SplashScreenState extends State<SplashScreen>
               style: GoogleFonts.playfairDisplay(
                 fontSize: 52,
                 fontWeight: FontWeight.w900,
-                color: const Color(0xFF0F172A),
+                color: colors.textDark,
                 letterSpacing: 4,
                 shadows: [
                   Shadow(
-                    color: const Color(0xFF0F172A).withValues(alpha: 0.1),
+                    color: colors.textDark.withValues(alpha: 0.1),
                     offset: const Offset(0, 4),
                     blurRadius: 12,
                   ),
@@ -504,7 +508,7 @@ class _SplashScreenState extends State<SplashScreen>
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: const Color(0xFF0F172A).withValues(alpha: 0.1),
+                  color: colors.textDark.withValues(alpha: 0.1),
                   width: 1,
                 ),
               ),
@@ -532,7 +536,7 @@ class _SplashScreenState extends State<SplashScreen>
         children: [
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF0F172A).withValues(alpha: 0.05),
+              color: colors.textDark.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(1),
             ),
           ),
@@ -576,7 +580,7 @@ class _AnimatedBackground extends StatelessWidget {
         return Stack(
           children: [
             // Base Background
-            Container(decoration: const BoxDecoration(color: Colors.white)),
+            Container(decoration: BoxDecoration(color: colors.background)),
             // Floating Blurred Blobs (Subtle Silver/Gray)
             ...List.generate(2, (index) {
               final angle =

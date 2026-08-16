@@ -40,6 +40,7 @@ import '../features/templates/presentation/template_detail_screen.dart';
 import '../features/templates/domain/entities/template.dart';
 import '../features/orders/presentation/order_detail_screen.dart';
 import '../features/orders/domain/entities/order_entity.dart';
+import '../features/payments/presentation/screens/finance_management_screen.dart';
 import '../core/services/app_update_service.dart';
 
 
@@ -69,6 +70,7 @@ class AppRoutes {
   static const String addTemplateFields = '/templates/add/fields';
   static const String templateDetail = '/templates/detail';
   static const String orderDetail = '/orders/detail';
+  static const String financeManagement = '/finance-management';
 
   // Settings & Profile
   static const String profile = '/profile';
@@ -341,6 +343,12 @@ class AppRouter {
             child: OrderDetailScreen(order: order),
           );
         },
+      ),
+      GoRoute(
+        path: AppRoutes.financeManagement,
+        name: AppRoutes.financeManagement,
+        pageBuilder: (context, state) =>
+            _animatedPage(state: state, child: const FinanceManagementScreen()),
       ),
 
       // ── Settings & Profile ───────────────────────────────────────────

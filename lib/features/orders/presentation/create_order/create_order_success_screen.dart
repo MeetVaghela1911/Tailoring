@@ -116,281 +116,296 @@ class CreateOrderSuccessScreen extends StatelessWidget {
                 // Main content
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Close button aligned top-right
-                      Align(
-                        alignment: Alignment.topRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: GestureDetector(
-                            onTap: () => context.go(AppRoutes.home),
-                            child: Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? Colors.white.withValues(alpha: 0.15)
-                                    : Colors.white.withValues(alpha: 0.8),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.1),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: IntrinsicHeight(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                // Close button aligned top-right
+                                Align(
+                                  alignment: Alignment.topRight,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: GestureDetector(
+                                      onTap: () => context.go(AppRoutes.home),
+                                      child: Container(
+                                        width: 38,
+                                        height: 38,
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? Colors.white.withValues(alpha: 0.15)
+                                              : Colors.white.withValues(alpha: 0.8),
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(alpha: 0.1),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Icon(
+                                          Icons.close,
+                                          color: isDark ? Colors.white70 : Colors.black54,
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ),
                                   ),
+                                ),
+
+                                const SizedBox(height: 24),
+
+                                // Large glowing circle with checkmark
+                                Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    // Outer glow ring (translucent)
+                                    Container(
+                                      width: 160,
+                                      height: 160,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.white.withValues(
+                                          alpha: isDark ? 0.1 : 0.5,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.white.withValues(alpha: 0.6),
+                                            blurRadius: 30,
+                                            spreadRadius: 5,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    // White middle ring
+                                    Container(
+                                      width: 130,
+                                      height: 130,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.white,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.white.withValues(alpha: 0.9),
+                                            blurRadius: 20,
+                                            spreadRadius: 2,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    // Green checkmark circle
+                                    Container(
+                                      width: 88,
+                                      height: 88,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: const Color(0xFF4CAF50),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(
+                                              0xFF4CAF50,
+                                            ).withValues(alpha: 0.4),
+                                            blurRadius: 20,
+                                            spreadRadius: 2,
+                                            offset: const Offset(0, 6),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.check_rounded,
+                                        color: Colors.white,
+                                        size: 50,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 36),
+
+                                // Title
+                                Text(
+                                  AppLocalizations.of(context).orderCreatedSuccessfully,
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF1A0A4A),
+                                    height: 1.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                // Subtitle
+                                Text(
+                                  AppLocalizations.of(context).orderCreatedSubtext,
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 13,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : const Color(0xFF1A0A4A).withValues(alpha: 0.55),
+                                    height: 1.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 32),
+
+                                // Order Reference Card
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 28,
+                                    vertical: 18,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.1)
+                                        : Colors.white.withValues(alpha: 0.7),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: isDark
+                                          ? Colors.white.withValues(alpha: 0.2)
+                                          : Colors.white,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        AppLocalizations.of(context).orderReferenceCap,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: c.colorPrimary,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        order != null 
+                                            ? '#${order!.id.substring(0, 8).toUpperCase()}' 
+                                            : '#ORD-2024-0234',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark
+                                              ? Colors.white
+                                              : const Color(0xFF1A0A4A),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(height: 24),
+                                // Tip Card for settings
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: c.colorPrimary.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: c.colorPrimary.withValues(alpha: 0.15),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.lightbulb_outline, color: c.colorPrimary, size: 22),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          AppLocalizations.of(context).orderSuccessTip,
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                            color: isDark ? Colors.white70 : const Color(0xFF1A0A4A).withValues(alpha: 0.7),
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(height: 16),
+                                const Spacer(),
+                                const SizedBox(height: 16),
+
+                                // Send PDF Receipt on WhatsApp button
+                                if (order != null) ...[
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF25D366),
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size(double.infinity, 50),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      elevation: 4,
+                                    ),
+                                    onPressed: () => ReceiptPdfService.showWhatsAppReceiptBottomSheet(context, order!),
+                                    icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 20),
+                                    label: Text(
+                                      'Send PDF Receipt on WhatsApp',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
                                 ],
-                              ),
-                              child: Icon(
-                                Icons.close,
-                                color: isDark ? Colors.white70 : Colors.black54,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
 
-                      const SizedBox(height: 24),
-
-                      // Large glowing circle with checkmark
-                      Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // Outer glow ring (translucent)
-                          Container(
-                            width: 160,
-                            height: 160,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withValues(
-                                alpha: isDark ? 0.1 : 0.5,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.white.withValues(alpha: 0.6),
-                                  blurRadius: 30,
-                                  spreadRadius: 5,
+                                // Create Another Order
+                                _buildButton(
+                                  label: AppLocalizations.of(context).createAnotherOrder,
+                                  icon: Icons.add_circle_outline,
+                                  color: c.colorPrimary,
+                                  onTap: () => context.go(AppRoutes.createOrder),
                                 ),
+                                const SizedBox(height: 20),
+
+                                // View Order Details
+                                GestureDetector(
+                                  onTap: () {
+                                    if (order != null) {
+                                      context.go(AppRoutes.orderDetail, extra: order);
+                                    } else {
+                                      context.go(AppRoutes.home);
+                                    }
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                    child: Text(
+                                      AppLocalizations.of(context).viewOrderDetails,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: isDark
+                                            ? Colors.white60
+                                            : const Color(
+                                                0xFF1A0A4A,
+                                              ).withValues(alpha: 0.6),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
                               ],
                             ),
                           ),
-                          // White middle ring
-                          Container(
-                            width: 130,
-                            height: 130,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  blurRadius: 20,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Green checkmark circle
-                          Container(
-                            width: 88,
-                            height: 88,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFF4CAF50),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(
-                                    0xFF4CAF50,
-                                  ).withValues(alpha: 0.4),
-                                  blurRadius: 20,
-                                  spreadRadius: 2,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.check_rounded,
-                              color: Colors.white,
-                              size: 50,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 36),
-
-                      // Title
-                      Text(
-                        AppLocalizations.of(context).orderCreatedSuccessfully,
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          color: isDark
-                              ? Colors.white
-                              : const Color(0xFF1A0A4A),
-                          height: 1.2,
                         ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Subtitle
-                      Text(
-                        AppLocalizations.of(context).orderCreatedSubtext,
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: isDark
-                              ? Colors.white70
-                              : const Color(0xFF1A0A4A).withValues(alpha: 0.55),
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Order Reference Card
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 28,
-                          vertical: 18,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.1)
-                              : Colors.white.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.2)
-                                : Colors.white,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              AppLocalizations.of(context).orderReferenceCap,
-                              style: GoogleFonts.poppins(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: c.colorPrimary,
-                                letterSpacing: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              order != null 
-                                  ? '#${order!.id.substring(0, 8).toUpperCase()}' 
-                                  : '#ORD-2024-0234',
-                              style: GoogleFonts.poppins(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: isDark
-                                    ? Colors.white
-                                    : const Color(0xFF1A0A4A),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-                      // Tip Card for settings
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: c.colorPrimary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: c.colorPrimary.withValues(alpha: 0.15),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.lightbulb_outline, color: c.colorPrimary, size: 22),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                AppLocalizations.of(context).orderSuccessTip,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDark ? Colors.white70 : const Color(0xFF1A0A4A).withValues(alpha: 0.7),
-                                  height: 1.4,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const Spacer(),
-
-
-                      // Send PDF Receipt on WhatsApp button
-                      if (order != null) ...[
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF25D366),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(double.infinity, 50),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            elevation: 4,
-                          ),
-                          onPressed: () => ReceiptPdfService.showWhatsAppReceiptBottomSheet(context, order!),
-                          icon: const FaIcon(FontAwesomeIcons.whatsapp, size: 20),
-                          label: Text(
-                            'Send PDF Receipt on WhatsApp',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-
-                      // Create Another Order
-                      _buildButton(
-                        label: AppLocalizations.of(context).createAnotherOrder,
-                        icon: Icons.add_circle_outline,
-                        color: c.colorPrimary,
-                        onTap: () => context.go(AppRoutes.createOrder),
-                      ),
-                      const SizedBox(height: 20),
-
-                      // View Order Details
-                      GestureDetector(
-                        onTap: () {
-                          if (order != null) {
-                            context.go(AppRoutes.orderDetail, extra: order);
-                          } else {
-                            context.go(AppRoutes.home);
-                          }
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Text(
-                            AppLocalizations.of(context).viewOrderDetails,
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: isDark
-                                  ? Colors.white60
-                                  : const Color(
-                                      0xFF1A0A4A,
-                                    ).withValues(alpha: 0.6),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
+                      );
+                    },
                   ),
                 ),
               ],

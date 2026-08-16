@@ -27,6 +27,8 @@ class CustomerLocalModel {
 
   @Index()
   bool isSynced = false;
-  
   DateTime? lastUpdated;
+
+  @Index()
+  bool isDeleted = false;
 }

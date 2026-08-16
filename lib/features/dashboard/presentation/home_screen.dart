@@ -31,6 +31,11 @@ import '../../customers/presentation/bloc/customer_event.dart';
 import '../../templates/presentation/bloc/template_event.dart';
 import '../../onboarding/presentation/bloc/walkthrough_cubit.dart';
 import '../../onboarding/presentation/utils/walkthrough_keys.dart';
+import '../../payments/presentation/bloc/payment_bloc.dart';
+import '../../payments/presentation/bloc/payment_event.dart';
+import '../../payments/presentation/bloc/payment_state.dart';
+import 'widgets/finance_hub_card.dart';
+import '../../../core/presentation/widgets/skeleton_loader.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -127,6 +132,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 _ordersCount = state.orders.length;
                 _triggerWalkthroughCheck();
                 NotificationService().evaluateAndNotifyOrders(state.orders);
+                // Trigger FinanceHubCard to refresh its data
+                getIt<PaymentBloc>().add(const LoadFilteredFinance(filterName: 'This Month'));
               }
             },
           ),
@@ -253,10 +260,12 @@ class _HomeScreenState extends State<HomeScreen> {
               final orderBloc = context.read<OrderBloc>();
               final customerBloc = context.read<CustomerBloc>();
               final templateBloc = context.read<TemplateBloc>();
+              final paymentBloc = getIt<PaymentBloc>();
 
               orderBloc.add(LoadOrders());
               customerBloc.add(LoadCustomers());
               templateBloc.add(LoadTemplates());
+              paymentBloc.add(const LoadFilteredFinance(filterName: 'This Month'));
 
               await Future.wait([
                 orderBloc.stream.firstWhere(
@@ -268,6 +277,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 templateBloc.stream.firstWhere(
                   (s) => s is TemplatesLoaded || s is TemplateError,
                 ),
+                paymentBloc.stream.firstWhere(
+                  (s) => s is FilteredFinanceLoaded || s is PaymentError,
+                ),
               ]);
             },
             child: ListView(
@@ -275,7 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               children: [
                 _buildHeaderInfo(c),
-                // const SizedBox(height: 32),
+                const SizedBox(height: 16),
                 Text(
                   l10n.overview,
                   style: GoogleFonts.poppins(
@@ -296,11 +308,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       );
                     }
-                    return _buildOverviewGrid(c, []); // Empty/Loading fallback
+                    return _buildSkeletonGrid(c); // Loading fallback
                   },
                 ),
                 const SizedBox(height: 24),
                 _buildQuickActions(c),
+                const FinanceHubCard(),
               ],
             ),
           ),
@@ -375,7 +388,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final now = DateTime.now();
 
     final pendingPayments = orders.where((o) => o.status == 'DELIVERED' && o.balanceDue > 0).toList();
-    final overdueOrders = orders.where((o) => o.status != 'DELIVERED' && o.deliveryDate != null && now.isAfter(o.deliveryDate!)).toList();
+    final today = DateTime(now.year, now.month, now.day);
+    final overdueOrders = orders.where((o) => o.status != 'DELIVERED' && o.deliveryDate != null && o.deliveryDate!.isBefore(today)).toList();
     final notStartedHalfway = orders.where((o) {
       if (o.status != 'NOT STARTED' || o.deliveryDate == null) return false;
       final total = o.deliveryDate!.difference(o.createdAt).inHours;
@@ -502,7 +516,9 @@ class _HomeScreenState extends State<HomeScreen> {
         )
         .length;
 
-    final overdue = orders
+    final monthlyOrders = orders.where((o) => o.createdAt.year == now.year && o.createdAt.month == now.month).toList();
+
+    final overdue = monthlyOrders
         .where(
           (o) =>
               o.status != 'COMPLETED' &&
@@ -511,7 +527,8 @@ class _HomeScreenState extends State<HomeScreen> {
         )
         .length;
 
-    final inProgress = orders.where((o) => o.status == 'IN PROGRESS').length;
+    final inProgress = monthlyOrders.where((o) => o.status == 'IN PROGRESS').length;
+    final monthlyRevenue = monthlyOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
 
     return IntrinsicHeight(
       child: Row(
@@ -571,10 +588,42 @@ class _HomeScreenState extends State<HomeScreen> {
                     iconColor: c.green,
                     icon: Icons.monitor_outlined,
                     title: l10n.estimatedRevenue,
-                    value: "Coming Soon",
-                    // value: "₹${(revenue / 1000).toStringAsFixed(1)}k",
+                    value: '₹${monthlyRevenue.toStringAsFixed(0)}',
+                    badgeText: '${monthlyOrders.length} orders',
+                    badgeColor: c.green,
+                    onTap: () => context.push(AppRoutes.financeManagement),
                   ),
                 ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeletonGrid(AppColorScheme c) {
+    return IntrinsicHeight(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Column(
+              children: [
+                Expanded(child: const SkeletonCard()),
+                const SizedBox(height: 16),
+                Expanded(child: const SkeletonCard()),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              children: [
+                Expanded(child: const SkeletonCard()),
+                const SizedBox(height: 16),
+                Expanded(child: const SkeletonCard()),
               ],
             ),
           ),
@@ -695,27 +744,41 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 16),
         Row(
-          mainAxisAlignment: MainAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _actionButton(
-              c,
-              Icons.add,
-              l10n.newOrder,
-              () {
-                getIt<OrderWizardBloc>().add(const StartOrderWizard());
-                context.push(AppRoutes.createOrder);
-              },
-              showcaseKey: WalkthroughKeys.homeNewOrderQuickAction,
-              showcaseDesc: l10n.walkthroughOrdersAdd,
+            Expanded(
+              child: _actionButton(
+                c,
+                Icons.straighten,
+                l10n.addTemplate,
+                () => context.push(AppRoutes.addTemplate),
+              ),
             ),
-            const SizedBox(width: 16),
-            _actionButton(
-              c,
-              Icons.person_add_alt,
-              l10n.addCust,
-              () => context.push(AppRoutes.addCustomer),
-              showcaseKey: WalkthroughKeys.homeAddCustomerFab,
-              showcaseDesc: l10n.walkthroughAddCustFab,
+            const SizedBox(width: 12),
+            Expanded(
+              child: _actionButton(
+                c,
+                Icons.person_add_alt,
+                l10n.addCust,
+                () => context.push(AppRoutes.addCustomer),
+                showcaseKey: WalkthroughKeys.homeAddCustomerFab,
+                showcaseDesc: l10n.walkthroughAddCustFab,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _actionButton(
+                c,
+                Icons.add,
+                l10n.newOrder,
+                () {
+                  getIt<OrderWizardBloc>().add(const StartOrderWizard());
+                  context.push(AppRoutes.createOrder);
+                },
+                isPrimary: true,
+                showcaseKey: WalkthroughKeys.homeNewOrderQuickAction,
+                showcaseDesc: l10n.walkthroughOrdersAdd,
+              ),
             ),
           ],
         ),
@@ -728,17 +791,17 @@ class _HomeScreenState extends State<HomeScreen> {
     IconData icon,
     String label,
     VoidCallback onTap, {
+    bool isPrimary = false,
     GlobalKey? showcaseKey,
     String? showcaseDesc,
   }) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
-    bool isPrimary = icon == Icons.add;
 
     Widget btn = GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        width: MediaQuery.of(context).size.width * 0.26,
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 6),
         decoration: BoxDecoration(
           color: isPrimary
               ? c.colorPrimary
@@ -761,7 +824,7 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: isPrimary
                     ? Colors.white.withValues(alpha: 0.25)
@@ -771,10 +834,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Icon(
                 icon,
                 color: isPrimary ? Colors.white : c.colorPrimary,
-                size: 24,
+                size: 22,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
               label,
               style: GoogleFonts.poppins(
@@ -784,6 +847,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               textAlign: TextAlign.center,
               maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

@@ -2,7 +2,7 @@ name: tailoring_flutter
 description: "Stitch - Digital Tailoring Management App"
 publish_to: 'none'
 
-version: 2.0.0+3
+version: 2.0.1+4
 
 environment:
   sdk: ^3.10.1
@@ -51,6 +51,8 @@ dependencies:
   pdf: ^3.11.1
   printing: ^5.13.2
   share_plus: ^10.1.4
+  qr_flutter: ^4.1.0
+  shimmer: ^3.0.0
 
 dev_dependencies:
   flutter_test:

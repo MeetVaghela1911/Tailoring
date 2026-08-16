@@ -17,6 +17,8 @@ import '../bloc/order_bloc.dart';
 import '../bloc/order_event.dart';
 import '../bloc/order_state.dart';
 import '../bloc/order_wizard_bloc.dart';
+import '../../data/datasources/lookup_remote_data_source.dart';
+import '../../data/models/payment_mode_model.dart';
 
 class CreateOrderPaymentScreen extends StatefulWidget {
   const CreateOrderPaymentScreen({super.key});
@@ -27,12 +29,12 @@ class CreateOrderPaymentScreen extends StatefulWidget {
 }
 
 class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
-  int _paymentMode = 0; // 0 Cash, 1 Card, 2 UPI, 3 Not Specified, 4+ Custom
-  final List<Map<String, dynamic>> _paymentModes = [
-    {'label': 'Cash', 'icon': Icons.attach_money},
-    {'label': 'Card', 'icon': Icons.credit_card},
-    {'label': 'Online/UPI', 'icon': Icons.qr_code_scanner},
-    {'label': 'Not Specified', 'icon': Icons.help_outline},
+  int _paymentMode = 1; // Supabase payment_modes id (1=Cash, 2=Card, 3=Online/UPI)
+  List<PaymentModeModel> _remotePaymentModes = [];
+  final List<PaymentModeModel> _defaultPaymentModes = const [
+    PaymentModeModel(id: 1, name: 'Cash'),
+    PaymentModeModel(id: 2, name: 'Card'),
+    PaymentModeModel(id: 3, name: 'Online / UPI'),
   ];
   late TextEditingController _advanceController;
   late TextEditingController _totalController;
@@ -65,10 +67,26 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
     _externalChargesController = TextEditingController(text: external > 0 ? external.toStringAsFixed(0) : '');
     
     _balanceDue = (total - advance).clamp(0, double.infinity);
-    _paymentMode = d.paymentMode;
+    _paymentMode = d.paymentMode > 0 ? d.paymentMode : 1;
     
     _advanceController.addListener(_updateBalance);
     _externalChargesController.addListener(_calculateTotal);
+    _calculateTotal();
+    _loadRemotePaymentModes();
+  }
+
+  Future<void> _loadRemotePaymentModes() async {
+    try {
+      final modes = await getIt<LookupRemoteDataSource>().getPaymentModes();
+      if (mounted && modes.isNotEmpty) {
+        setState(() {
+          _remotePaymentModes = modes;
+          if (!modes.any((m) => m.id == _paymentMode)) {
+            _paymentMode = modes.first.id;
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   void _calculateTotal() {
@@ -95,50 +113,6 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
       }
       _balanceDue = (t - a).clamp(0, double.infinity);
     });
-  }
-
-  void _showAddPaymentModeDialog() {
-    final nameCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Add Payment Mode',
-          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        content: TextField(
-          controller: nameCtrl,
-          autofocus: true,
-          decoration: InputDecoration(
-            hintText: 'e.g., Paytm, Cheque, Net Banking',
-            hintStyle: GoogleFonts.poppins(fontSize: 13),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final text = nameCtrl.text.trim();
-              if (text.isNotEmpty) {
-                setState(() {
-                  _paymentModes.add({
-                    'label': text,
-                    'icon': Icons.account_balance_wallet_outlined,
-                  });
-                  _paymentMode = _paymentModes.length - 1;
-                });
-              }
-              Navigator.pop(ctx);
-            },
-            child: Text('Add', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -570,6 +544,17 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
     );
   }
 
+  List<PaymentModeModel> get displayModes =>
+      _remotePaymentModes.isNotEmpty ? _remotePaymentModes : _defaultPaymentModes;
+
+  IconData _getPaymentIcon(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('cash')) return Icons.attach_money;
+    if (n.contains('card')) return Icons.credit_card;
+    if (n.contains('upi') || n.contains('online') || n.contains('net')) return Icons.qr_code_scanner;
+    return Icons.account_balance_wallet;
+  }
+
   Widget _buildPaymentDetails(AppColorScheme c) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
@@ -653,46 +638,18 @@ class _CreateOrderPaymentScreenState extends State<CreateOrderPaymentScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              ...List.generate(_paymentModes.length, (index) {
-                final mode = _paymentModes[index];
+              ...List.generate(displayModes.length, (index) {
+                final mode = displayModes[index];
                 return SizedBox(
                   width: (MediaQuery.of(context).size.width - 56) / 3 - 6,
                   child: _buildPaymentModeBtn(
                     c,
-                    index,
-                    mode['icon'] as IconData,
-                    mode['label'] as String,
+                    mode.id,
+                    _getPaymentIcon(mode.name),
+                    mode.name,
                   ),
                 );
               }),
-              SizedBox(
-                width: (MediaQuery.of(context).size.width - 56) / 3 - 6,
-                child: GestureDetector(
-                  onTap: _showAddPaymentModeDialog,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      border: Border.all(color: c.colorPrimary, width: 1.5),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(Icons.add_circle_outline, color: c.colorPrimary, size: 24),
-                        const SizedBox(height: 8),
-                        Text(
-                          '+ Add Mode',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: c.colorPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
         ],

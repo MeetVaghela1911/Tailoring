@@ -43,17 +43,58 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
 
   bool _hasShownQuantityGuide = false;
 
+  List<String> get _uniqueSelectedGarments {
+    final result = <String>[];
+    final seen = <String>{};
+    for (final item in _selectedGarments) {
+      final template = _allTemplates.where(
+        (t) => t.id == item || t.name == item || t.id.toLowerCase() == item.toLowerCase() || t.name.toLowerCase() == item.toLowerCase(),
+      ).firstOrNull;
+      final key = template?.id ?? item;
+      if (!seen.contains(key)) {
+        seen.add(key);
+        result.add(key);
+      }
+    }
+    return result;
+  }
+
   @override
   void initState() {
     super.initState();
+    final tState = context.read<TemplateBloc>().state;
+    if (tState is TemplatesLoaded) {
+      _allTemplates = tState.templates;
+    }
     context.read<TemplateBloc>().add(LoadTemplates());
     final d = getIt<OrderWizardBloc>().state.formData;
-    _selectedGarments = Set.from(d.garmentTypes);
+    _selectedGarments = {};
     _garmentQuantities = Map.from(d.garmentQuantities);
-    // Ensure all selected garments have at least qty 1
-    for (var g in _selectedGarments) {
-      _garmentQuantities.putIfAbsent(g, () => 1);
+
+    for (var rawG in d.garmentTypes) {
+      final match = _allTemplates.where(
+        (t) => t.id == rawG || t.name == rawG || t.id.toLowerCase() == rawG.toLowerCase() || t.name.toLowerCase() == rawG.toLowerCase(),
+      ).firstOrNull;
+
+      if (match != null) {
+        _selectedGarments.add(match.id);
+        _selectedGarments.add(match.name);
+      } else {
+        _selectedGarments.add(rawG);
+      }
+
+      final existingQty = _garmentQuantities[rawG] ??
+          (match != null ? (_garmentQuantities[match.id] ?? _garmentQuantities[match.name]) : null) ??
+          _garmentQuantities.entries.where((e) => e.key.trim().toLowerCase() == rawG.trim().toLowerCase()).firstOrNull?.value ??
+          1;
+
+      _garmentQuantities[rawG] = existingQty;
+      if (match != null) {
+        _garmentQuantities[match.id] = existingQty;
+        _garmentQuantities[match.name] = existingQty;
+      }
     }
+
     _specialInstructions = d.specialInstructions;
     _instructionsCtrl.text = _specialInstructions;
     _imageFile = d.referenceImageFile;
@@ -98,7 +139,8 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
   }
 
   void _openMeasurements() {
-    if (_selectedGarments.isEmpty) {
+    final selectedGarmentsList = _uniqueSelectedGarments;
+    if (selectedGarmentsList.isEmpty) {
       showAppSnackBar(
         context,
         message: AppLocalizations.of(context).selectAtLeastOneGarment,
@@ -107,35 +149,42 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
     }
 
     double calculatedTotal = 0;
-
     final currentData = getIt<OrderWizardBloc>().state.formData;
 
     Map<String, double> existingPrices = Map.from(currentData.garmentPrices);
     Map<String, double> garmentPrices = {};
     Map<String, int> garmentQuantities = {};
+    List<String> selectedNames = [];
 
-    for (final templateId in _selectedGarments) {
-      final qty = _garmentQuantities[templateId] ?? 1;
-      final template = _allTemplates.firstWhere(
-        (t) => t.id == templateId || t.name == templateId,
-        orElse: () => Template(
-          id: templateId,
-          name: templateId,
-          category: 'Other',
-          iconCodePoint: 0,
-          fields: const [],
-          basePrice: 0.0,
-        ),
+    for (final key in selectedGarmentsList) {
+      final template = _allTemplates.where(
+        (t) => t.id == key || t.name == key || t.id.toLowerCase() == key.toLowerCase() || t.name.toLowerCase() == key.toLowerCase(),
+      ).firstOrNull ?? Template(
+        id: key,
+        name: key,
+        category: 'Other',
+        iconCodePoint: 0,
+        fields: const [],
+        basePrice: 0.0,
       );
+
       final name = template.name;
+      selectedNames.add(name);
+
+      final qty = _garmentQuantities[template.id] ??
+          _garmentQuantities[name] ??
+          _garmentQuantities[key] ??
+          1;
 
       garmentQuantities[name] = qty;
+      garmentQuantities[key] = qty;
+      if (template.id.isNotEmpty) garmentQuantities[template.id] = qty;
 
-      if (!existingPrices.containsKey(name) && !existingPrices.containsKey(templateId)) {
+      if (!existingPrices.containsKey(name) && !existingPrices.containsKey(key)) {
         garmentPrices[name] = template.basePrice * qty;
       } else {
-        final existingPrice = existingPrices[name] ?? existingPrices[templateId] ?? (template.basePrice * qty);
-        final oldQty = currentData.garmentQuantities[name] ?? currentData.garmentQuantities[templateId] ?? 1;
+        final existingPrice = existingPrices[name] ?? existingPrices[key] ?? (template.basePrice * qty);
+        final oldQty = currentData.garmentQuantities[name] ?? currentData.garmentQuantities[key] ?? 1;
         if (qty != oldQty && oldQty > 0) {
           final unitPrice = existingPrice / oldQty;
           garmentPrices[name] = unitPrice * qty;
@@ -147,23 +196,8 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
       calculatedTotal += garmentPrices[name]!;
     }
 
-    final selectedTemplateNames = _selectedGarments.map((id) {
-      final template = _allTemplates.firstWhere(
-        (t) => t.id == id || t.name == id,
-        orElse: () => Template(
-          id: id,
-          name: id,
-          category: 'Other',
-          iconCodePoint: 0,
-          fields: const [],
-          basePrice: 0.0,
-        ),
-      );
-      return template.name;
-    }).toList();
-
     final updated = currentData.copyWith(
-      garmentTypes: selectedTemplateNames,
+      garmentTypes: selectedNames,
       garmentPrices: garmentPrices,
       garmentQuantities: garmentQuantities,
       specialInstructions: _instructionsCtrl.text.trim(),
@@ -175,7 +209,7 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
 
     context.push(
       AppRoutes.createOrderMeasurements,
-      extra: {'garmentTypes': selectedTemplateNames, 'isOrderFlow': true},
+      extra: {'garmentTypes': selectedNames, 'isOrderFlow': true},
     );
   }
 
@@ -287,18 +321,7 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                   color: c.textDark.withValues(alpha: 0.7),
                 ),
               ),
-              Container(
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.1)
-                      : Colors.black.withValues(alpha: 0.05),
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  icon: Icon(Icons.more_horiz, color: c.textDark, size: 20),
-                  onPressed: () {},
-                ),
-              ),
+              const SizedBox(width: 40),
             ],
           ),
           const SizedBox(height: 24),
@@ -430,16 +453,24 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
               spacing: 10,
               runSpacing: 10,
               children: garmentOptions.map((garment) {
-                final isSelected = _selectedGarments.contains(garment.id);
+                final isSelected = _selectedGarments.contains(garment.id) ||
+                    _selectedGarments.contains(garment.name) ||
+                    _selectedGarments.any((sg) => sg.toLowerCase() == garment.id.toLowerCase() || sg.toLowerCase() == garment.name.toLowerCase());
+
                 return GestureDetector(
                   onTap: () {
                     setState(() {
                       if (isSelected) {
                         _selectedGarments.remove(garment.id);
+                        _selectedGarments.remove(garment.name);
+                        _selectedGarments.removeWhere((sg) => sg.toLowerCase() == garment.id.toLowerCase() || sg.toLowerCase() == garment.name.toLowerCase());
                         _garmentQuantities.remove(garment.id);
+                        _garmentQuantities.remove(garment.name);
                       } else {
                         _selectedGarments.add(garment.id);
+                        _selectedGarments.add(garment.name);
                         _garmentQuantities[garment.id] = 1;
+                        _garmentQuantities[garment.name] = 1;
 
                         // Trigger quantity guide if walkthrough is active and we haven't shown it yet
                         final walkthroughState = context
@@ -505,7 +536,7 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
               }).toList(),
             ),
           ),
-          if (_selectedGarments.isNotEmpty) ...[
+          if (_uniqueSelectedGarments.isNotEmpty) ...[
             const SizedBox(height: 24),
             Showcase(
               key: WalkthroughKeys.createOrderSetQuantities,
@@ -527,20 +558,22 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  ..._selectedGarments.map((templateId) {
-                    final template = garmentOptions.firstWhere(
-                      (t) => t.id == templateId || t.name == templateId,
-                      orElse: () => Template(
-                        id: templateId,
-                        name: templateId,
-                        category: 'Other',
-                        iconCodePoint: 0,
-                        fields: const [],
-                        basePrice: 0.0,
-                      ),
+                  ..._uniqueSelectedGarments.map((templateId) {
+                    final template = garmentOptions.where(
+                      (t) => t.id == templateId || t.name == templateId || t.id.toLowerCase() == templateId.toLowerCase() || t.name.toLowerCase() == templateId.toLowerCase(),
+                    ).firstOrNull ?? Template(
+                      id: templateId,
+                      name: templateId,
+                      category: 'Other',
+                      iconCodePoint: 0,
+                      fields: const [],
+                      basePrice: 0.0,
                     );
 
-                    final qty = _garmentQuantities[templateId] ?? 1;
+                    final qty = _garmentQuantities[template.id] ??
+                        _garmentQuantities[template.name] ??
+                        _garmentQuantities[templateId] ??
+                        1;
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.symmetric(
@@ -589,8 +622,14 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                                 onPressed: qty > 1
                                     ? () {
                                         setState(
-                                          () => _garmentQuantities[templateId] =
-                                              qty + 1,
+                                          () {
+                                            final newQty = qty - 1;
+                                            _garmentQuantities[templateId] = newQty;
+                                            _garmentQuantities[template.id] = newQty;
+                                            if (template.name != template.id) {
+                                              _garmentQuantities[template.name] = newQty;
+                                            }
+                                          },
                                         );
                                       }
                                     : null,
@@ -615,8 +654,14 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                                 ),
                                 onPressed: () {
                                   setState(
-                                    () => _garmentQuantities[templateId] =
-                                        qty + 1,
+                                    () {
+                                      final newQty = qty + 1;
+                                      _garmentQuantities[templateId] = newQty;
+                                      _garmentQuantities[template.id] = newQty;
+                                      if (template.name != template.id) {
+                                        _garmentQuantities[template.name] = newQty;
+                                      }
+                                    },
                                   );
                                 },
                               ),
@@ -730,21 +775,37 @@ class _CreateOrderItemsScreenState extends State<CreateOrderItemsScreen> {
                   : _remoteImagePath != null
                   ? Stack(
                       children: [
-                        Image.network(
-                          _remoteImagePath!,
-                          width: double.infinity,
-                          height: 150,
-                          fit: BoxFit.cover,
-                          errorBuilder: (ctx, _, _) => Container(
-                            width: double.infinity,
-                            height: 150,
-                            color: c.divider.withValues(alpha: 0.1),
-                            child: Icon(
-                              Icons.broken_image_outlined,
-                              color: c.gray,
-                            ),
-                          ),
-                        ),
+                        (_remoteImagePath!.startsWith('http://') || _remoteImagePath!.startsWith('https://'))
+                            ? Image.network(
+                                _remoteImagePath!,
+                                width: double.infinity,
+                                height: 150,
+                                fit: BoxFit.cover,
+                                errorBuilder: (ctx, _, _) => Container(
+                                  width: double.infinity,
+                                  height: 150,
+                                  color: c.divider.withValues(alpha: 0.1),
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: c.gray,
+                                  ),
+                                ),
+                              )
+                            : Image.file(
+                                File(_remoteImagePath!),
+                                width: double.infinity,
+                                height: 150,
+                                fit: BoxFit.cover,
+                                errorBuilder: (ctx, _, _) => Container(
+                                  width: double.infinity,
+                                  height: 150,
+                                  color: c.divider.withValues(alpha: 0.1),
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: c.gray,
+                                  ),
+                                ),
+                              ),
                         Positioned(
                           right: 8,
                           top: 8,

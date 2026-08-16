@@ -113,8 +113,9 @@ void main() {
       await tester.pumpAndSettle();
 
       // Check quick actions
-      expect(find.byIcon(Icons.add), findsOneWidget);
+      expect(find.byIcon(Icons.straighten), findsOneWidget);
       expect(find.byIcon(Icons.person_add_alt), findsOneWidget);
+      expect(find.byIcon(Icons.add), findsOneWidget);
 
       // Check bottom nav items
       expect(find.byIcon(Icons.home_filled), findsOneWidget);

@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../onboarding/presentation/utils/walkthrough_keys.dart';
@@ -14,12 +13,20 @@ import '../../../core/theme/common_methods.dart';
 import 'package:tailoring_flutter/l10n/app_localizations.dart';
 import '../../../routes/app_router.dart';
 import '../domain/entities/order_entity.dart';
+import '../../../core/presentation/widgets/skeleton_loader.dart';
 import 'bloc/order_bloc.dart';
 import 'bloc/order_event.dart';
 import 'bloc/order_state.dart';
 import '../../../core/utility/dependency_injection.dart';
 import 'bloc/order_wizard_bloc.dart';
 import '../../../core/widgets/app_empty_state.dart';
+import '../../../core/services/receipt_pdf_service.dart';
+import '../../../core/services/whatsapp_template_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../templates/presentation/bloc/template_bloc.dart';
+import '../../templates/presentation/bloc/template_state.dart';
+import '../../payments/presentation/widgets/record_payment_sheet.dart';
+import '../../payments/presentation/bloc/payment_bloc.dart';
 
 class OrdersListScreen extends StatefulWidget {
   final String? initialStatusFilter;
@@ -110,11 +117,33 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
     // Search filter
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
+      final templateState = context.read<TemplateBloc?>()?.state;
+      final tmpls = templateState is TemplatesLoaded ? templateState.templates : null;
       filtered = filtered.where((o) => 
         (o.customerName?.toLowerCase().contains(q) ?? false) ||
-        o.garmentTypes.any((t) => t.toLowerCase().contains(q))
+        o.garmentTypes.any((t) => resolveGarmentName(t, AppLocalizations.of(context), items: o.items, templates: tmpls).toLowerCase().contains(q))
       ).toList();
     }
+
+    // Sort by delivery date ascending, then priority descending, then createdAt descending
+    filtered = List.of(filtered);
+    filtered.sort((a, b) {
+      if (a.deliveryDate == null && b.deliveryDate == null) {
+        final prioCmp = b.priorityIndex.compareTo(a.priorityIndex);
+        if (prioCmp != 0) return prioCmp;
+        return b.createdAt.compareTo(a.createdAt);
+      }
+      if (a.deliveryDate == null) return 1;
+      if (b.deliveryDate == null) return -1;
+
+      final dateCmp = a.deliveryDate!.compareTo(b.deliveryDate!);
+      if (dateCmp != 0) return dateCmp;
+
+      final prioCmp = b.priorityIndex.compareTo(a.priorityIndex);
+      if (prioCmp != 0) return prioCmp;
+
+      return b.createdAt.compareTo(a.createdAt);
+    });
 
     return filtered;
   }
@@ -191,11 +220,19 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                       ),
 
                       if (state is OrderLoading)
-                        const SliverToBoxAdapter(
-                          child: Center(child: Padding(
-                            padding: EdgeInsets.only(top: 40),
-                            child: CircularProgressIndicator(),
-                          )),
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                return const Padding(
+                                  padding: EdgeInsets.only(bottom: 12),
+                                  child: SkeletonCard(height: 120, margin: EdgeInsets.zero),
+                                );
+                              },
+                              childCount: 5,
+                            ),
+                          ),
                         )
                       else if (state is OrderError)
                         SliverToBoxAdapter(
@@ -342,6 +379,9 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
     final statusBg = _getStatusBg(o.status, c);
     final accentColor = _getAccentColor(o.status, c);
     final dueInfo = _getDueInfo(o, l10n);
+    final templateState = context.watch<TemplateBloc?>()?.state;
+    final tmpls = templateState is TemplatesLoaded ? templateState.templates : null;
+    final garmentNamesText = formatGarmentTypesList(o.garmentTypes, l10n, items: o.items, templates: tmpls);
 
     return Stack(
       children: [
@@ -390,74 +430,47 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Flexible(
-                          child: Text(
-                            o.customerName ?? 'No Name',
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.poppins(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: c.textDark,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: statusBg,
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: Text(
-                            o.status == 'IN PROGRESS' ? l10n.inProgress.toUpperCase() : 
-                            o.status == 'READY' ? l10n.readyForTrial.toUpperCase() :
-                            o.status == 'DELIVERED' ? l10n.delivered.toUpperCase() :
-                            o.status.toUpperCase(),
-                            style: GoogleFonts.poppins(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.4,
-                              color: statusColor,
-                            ),
-                          ),
-                        ),
-                        if (o.priorityIndex > 0) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: (o.priorityIndex == 2 ? c.red : c.colorPrimary).withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(30),
-                              border: Border.all(
-                                color: (o.priorityIndex == 2 ? c.red : c.colorPrimary).withValues(alpha: 0.3),
-                                width: 0.8,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  o.priorityIndex == 2 ? Icons.bolt : Icons.speed,
-                                  size: 10,
-                                  color: o.priorityIndex == 2 ? c.red : c.colorPrimary,
+                        Expanded(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  o.customerName ?? 'No Name',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: c.textDark,
+                                  ),
                                 ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  getLocalizedPriority(o.priorityIndex, l10n).toUpperCase(),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: statusBg,
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                child: Text(
+                                  o.status == 'IN PROGRESS' ? l10n.inProgress.toUpperCase() : 
+                                  o.status == 'READY' ? l10n.readyForTrial.toUpperCase() :
+                                  o.status == 'DELIVERED' ? l10n.delivered.toUpperCase() :
+                                  o.status.toUpperCase(),
                                   style: GoogleFonts.poppins(
                                     fontSize: 9,
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 0.4,
-                                    color: o.priorityIndex == 2 ? c.red : c.colorPrimary,
+                                    color: statusColor,
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                        const Spacer(),
+                        ),
+                        const SizedBox(width: 10),
                         if (isFirstItem)
                           Showcase(
                             key: WalkthroughKeys.orderWhatsAppGuide,
@@ -465,23 +478,7 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                             targetBorderRadius: BorderRadius.circular(18),
                             targetPadding: const EdgeInsets.all(6),
                             child: GestureDetector(
-                              onTap: () async {
-                                if (o.customerPhone != null && o.customerPhone!.isNotEmpty) {
-                                  final phone = o.customerPhone!.startsWith('+91')
-                                      ? o.customerPhone!.replaceAll(RegExp(r'[^\d+]'), '')
-                                      :  "+91${o.customerPhone!.replaceAll(RegExp(r'[^\d+]'), '')}";
-                                  final url = Uri.parse('https://wa.me/$phone');
-                                  if (await canLaunchUrl(url)) {
-                                    await launchUrl(url, mode: LaunchMode.externalApplication);
-                                  } else {
-                                    if (!mounted) return;
-                                    showAppSnackBar(context, message: 'Could not launch WhatsApp', isError: true);
-                                  }
-                                } else {
-                                  if (!mounted) return;
-                                  showAppSnackBar(context, message: 'No phone number available', isError: true);
-                                }
-                              },
+                              onTap: () => _showWhatsAppActionChooser(context, o),
                               child: Container(
                                 width: 36, height: 36,
                                 alignment: Alignment.center,
@@ -501,21 +498,7 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                           )
                         else
                           GestureDetector(
-                            onTap: () async {
-                              if (o.customerPhone != null && o.customerPhone!.isNotEmpty) {
-                                final phone = o.customerPhone!.replaceAll(RegExp(r'[^\d+]'), '');
-                                final url = Uri.parse('https://wa.me/$phone');
-                                if (await canLaunchUrl(url)) {
-                                  await launchUrl(url, mode: LaunchMode.externalApplication);
-                                } else {
-                                  if (!mounted) return;
-                                  showAppSnackBar(context, message: 'Could not launch WhatsApp', isError: true);
-                                }
-                              } else {
-                                if (!mounted) return;
-                                showAppSnackBar(context, message: 'No phone number available', isError: true);
-                              }
-                            },
+                            onTap: () => _showWhatsAppActionChooser(context, o),
                             child: Container(
                               width: 36, height: 36,
                               alignment: Alignment.center,
@@ -536,24 +519,70 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      '#${o.id.length > 8 ? o.id.substring(0, 8).toUpperCase() : o.id.toUpperCase()} • ${o.garmentTypes.join(", ")}',
+                      '#${o.id.length > 8 ? o.id.substring(0, 8).toUpperCase() : o.id.toUpperCase()}${garmentNamesText.isNotEmpty ? ' • $garmentNamesText' : ''}',
                       style: GoogleFonts.poppins(fontSize: 12.5, color: c.gray),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Icon(dueInfo.icon, size: 14, color: dueInfo.color),
-                        const SizedBox(width: 5),
-                        Text(
-                          dueInfo.label,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: dueInfo.color,
+                        Expanded(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(dueInfo.icon, size: 14, color: dueInfo.color),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  dueInfo.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: dueInfo.color,
+                                  ),
+                                ),
+                              ),
+                              if (o.priorityIndex > 1) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: getPriorityColor(o.priorityIndex, c).withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(30),
+                                    border: Border.all(
+                                      color: getPriorityColor(o.priorityIndex, c).withValues(alpha: 0.3),
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        o.priorityIndex == 3 ? Icons.bolt : Icons.speed,
+                                        size: 10,
+                                        color: getPriorityColor(o.priorityIndex, c),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        getLocalizedPriority(o.priorityIndex, l10n).toUpperCase(),
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.4,
+                                          color: getPriorityColor(o.priorityIndex, c),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                        const Spacer(),
+                        if (o.status == 'IN PROGRESS' || o.status == 'READY' || (o.status == 'DELIVERED' && o.balanceDue > 0))
+                          const SizedBox(width: 8),
                         if (o.status == 'IN PROGRESS')
                           _buildShortProgressBar(0.5, accentColor), // Placeholder progress
                         if (o.status == 'READY')
@@ -561,9 +590,15 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                         if (o.status == 'DELIVERED' && o.balanceDue > 0)
                           GestureDetector(
                             onTap: () {
-                              final upd = o.copyWith(advancePaid: o.totalAmount);
-                              context.read<OrderBloc>().add(UpdateOrder(upd));
-                              showAppSnackBar(context, message: 'Payment marked as Completed!');
+                              showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                backgroundColor: Colors.transparent,
+                                builder: (ctx) => BlocProvider<PaymentBloc>(
+                                  create: (_) => getIt<PaymentBloc>(),
+                                  child: RecordPaymentSheet(order: o),
+                                ),
+                              );
                             },
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -716,15 +751,186 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
     }
     
     final now = DateTime.now();
-    final diff = o.deliveryDate!.difference(now).inDays;
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(o.deliveryDate!.year, o.deliveryDate!.month, o.deliveryDate!.day);
+    final diff = target.difference(today).inDays;
     
     if (diff < 0) {
       return _DueInfo(l10n.overdueBy(diff.abs()), const Color(0xFFE53935), Icons.access_time_outlined);
     } else if (diff == 0) {
       return _DueInfo(l10n.dueToday, const Color(0xFFF57C00), Icons.access_time_outlined);
+    } else if (diff == 1) {
+      return _DueInfo('Due tomorrow', const Color(0xFFF57C00), Icons.access_time_outlined);
     } else {
       return _DueInfo(l10n.dueIn(diff), AppColors.light.colorPrimary, Icons.calendar_today_outlined);
     }
+  }
+
+  void _showWhatsAppActionChooser(BuildContext context, OrderEntity o) {
+    final c = getThemeBaseColors(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cleanPhone = WhatsAppTemplateService.cleanPhoneNumber(o.customerPhone);
+    final orderShortId = o.orderNumber != null
+        ? '${o.orderNumber}'
+        : (o.id.length > 6 ? o.id.substring(0, 6).toUpperCase() : o.id.toUpperCase());
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? c.cardDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF25D366).withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const FaIcon(FontAwesomeIcons.whatsapp, color: Color(0xFF25D366), size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'WhatsApp Options',
+                          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold, color: c.textDark),
+                        ),
+                        Text(
+                          'Order #ORD-$orderShortId • ${o.customerName ?? "Customer"}',
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(fontSize: 11, color: c.gray),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: Icon(Icons.close, color: c.gray),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Option 1: Send Ready / Update Message (Open Message Options Sheet)
+              InkWell(
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ReceiptPdfService.showWhatsAppReceiptBottomSheet(context, o);
+                },
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF25D366).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFF25D366).withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF25D366),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.send_rounded, color: Colors.white, size: 16),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Send Order Update / Ready Message',
+                              style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold, color: c.textDark),
+                            ),
+                            Text(
+                              'Send status update message, fitting trial, or PDF receipt',
+                              style: GoogleFonts.poppins(fontSize: 11, color: c.gray),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right, color: c.gray),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Option 2: Direct WhatsApp Chat (Move to WhatsApp only)
+              InkWell(
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  if (cleanPhone.isNotEmpty) {
+                    final url = Uri.parse('https://wa.me/$cleanPhone');
+                    if (await canLaunchUrl(url)) {
+                      await launchUrl(url, mode: LaunchMode.externalApplication);
+                    } else {
+                      if (context.mounted) {
+                        showAppSnackBar(context, message: 'Could not launch WhatsApp app', isError: true);
+                      }
+                    }
+                  } else {
+                    showAppSnackBar(context, message: 'No phone number available for this customer', isError: true);
+                  }
+                },
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: c.colorPrimary.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.chat_bubble_outline, color: c.colorPrimary, size: 16),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Move to WhatsApp Only (Direct Chat)',
+                              style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold, color: c.textDark),
+                            ),
+                            Text(
+                              'Open customer chat directly without template message',
+                              style: GoogleFonts.poppins(fontSize: 11, color: c.gray),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right, color: c.gray),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 

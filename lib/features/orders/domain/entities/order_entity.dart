@@ -1,7 +1,10 @@
 import 'package:equatable/equatable.dart';
+import 'order_item_entity.dart';
 
 class OrderEntity extends Equatable {
   final String id;
+  final int? orderNumber;
+  final String? shopId;
   final String? customerId;
   final String? customerName;
   final String? customerPhone;
@@ -21,9 +24,13 @@ class OrderEntity extends Equatable {
   final String status;
   final Map<String, String> measurementNotes;
   final DateTime createdAt;
+  final List<OrderItemEntity> items;
+  final bool isDeleted;
 
   const OrderEntity({
     required this.id,
+    this.orderNumber,
+    this.shopId,
     this.customerId,
     this.customerName,
     this.customerPhone,
@@ -35,7 +42,7 @@ class OrderEntity extends Equatable {
     required this.measurements,
     this.deliveryDate,
     required this.priorityIndex,
-    required this.assignedTailor,
+    this.assignedTailor = '',
     required this.totalAmount,
     required this.advancePaid,
     this.externalCharges = 0.0,
@@ -43,12 +50,16 @@ class OrderEntity extends Equatable {
     required this.status,
     this.measurementNotes = const {},
     required this.createdAt,
+    this.items = const [],
+    this.isDeleted = false,
   });
 
   double get balanceDue => (totalAmount - advancePaid).clamp(0, double.infinity);
 
   OrderEntity copyWith({
     String? id,
+    int? orderNumber,
+    String? shopId,
     String? customerId,
     String? customerName,
     String? customerPhone,
@@ -68,9 +79,13 @@ class OrderEntity extends Equatable {
     String? status,
     Map<String, String>? measurementNotes,
     DateTime? createdAt,
+    List<OrderItemEntity>? items,
+    bool? isDeleted,
   }) {
     return OrderEntity(
       id: id ?? this.id,
+      orderNumber: orderNumber ?? this.orderNumber,
+      shopId: shopId ?? this.shopId,
       customerId: customerId ?? this.customerId,
       customerName: customerName ?? this.customerName,
       customerPhone: customerPhone ?? this.customerPhone,
@@ -90,12 +105,16 @@ class OrderEntity extends Equatable {
       status: status ?? this.status,
       measurementNotes: measurementNotes ?? this.measurementNotes,
       createdAt: createdAt ?? this.createdAt,
+      items: items ?? this.items,
+      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 
   @override
   List<Object?> get props => [
     id,
+    orderNumber,
+    shopId,
     customerId,
     customerName,
     customerPhone,
@@ -115,5 +134,7 @@ class OrderEntity extends Equatable {
     status,
     measurementNotes,
     createdAt,
+    items,
+    isDeleted,
   ];
 }

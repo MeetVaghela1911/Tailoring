@@ -37,7 +37,7 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
   @override
   Future<List<OrderModel>> getOrders() async {
     try {
-      final orders = await localDb.isar.orderLocalModels.where().findAll();
+      final orders = await localDb.isar.orderLocalModels.filter().isDeletedEqualTo(false).findAll();
       
       // Auto-heal any corrupted legacy records with empty remoteId
       final corrupted = orders.where((o) => o.remoteId.trim().isEmpty).toList();
@@ -51,7 +51,9 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
       }
 
       final customersMap = await _getCustomersMap();
-      return orders.map((o) => _toOrderModel(o, customersMap)).toList();
+      final list = orders.map((o) => _toOrderModel(o, customersMap)).toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
     } catch (e) {
       throw CacheException('Failed to fetch orders from local database: $e');
     }
@@ -60,7 +62,7 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
   @override
   Future<OrderModel?> getOrderById(String id) async {
     if (id.trim().isEmpty) return null;
-    final order = await localDb.isar.orderLocalModels.filter().remoteIdEqualTo(id).findFirst();
+    final order = await localDb.isar.orderLocalModels.filter().remoteIdEqualTo(id).isDeletedEqualTo(false).findFirst();
     if (order == null) return null;
     final customersMap = await _getCustomersMap();
     return _toOrderModel(order, customersMap);
@@ -69,7 +71,7 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
   @override
   Future<List<OrderModel>> getOrdersByCustomer(String customerId) async {
     if (customerId.trim().isEmpty) return [];
-    final orders = await localDb.isar.orderLocalModels.filter().customerIdEqualTo(customerId).findAll();
+    final orders = await localDb.isar.orderLocalModels.filter().customerIdEqualTo(customerId).isDeletedEqualTo(false).findAll();
     final customersMap = await _getCustomersMap();
     return orders.map((o) => _toOrderModel(o, customersMap)).toList();
   }
@@ -113,6 +115,7 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
       ..paymentMode = order.paymentMode
       ..status = order.status
       ..createdAt = order.createdAt
+      ..isDeleted = order.isDeleted
       ..isSynced = false
       ..lastUpdated = DateTime.now();
 
@@ -172,6 +175,7 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
       ..externalCharges = order.externalCharges
       ..paymentMode = order.paymentMode
       ..status = order.status
+      ..isDeleted = order.isDeleted
       ..isSynced = false
       ..lastUpdated = DateTime.now();
 
@@ -192,7 +196,13 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
     if (id.trim().isEmpty) return;
     try {
       await localDb.isar.writeTxn(() async {
-        await localDb.isar.orderLocalModels.filter().remoteIdEqualTo(id).deleteAll();
+        final existingLocal = await localDb.isar.orderLocalModels.filter().remoteIdEqualTo(id).findFirst();
+        if (existingLocal != null) {
+          existingLocal.isDeleted = true;
+          existingLocal.isSynced = false;
+          existingLocal.lastUpdated = DateTime.now();
+          await localDb.isar.orderLocalModels.put(existingLocal);
+        }
       });
     } catch (e) {
       throw CacheException('Failed to delete order from local database: $e');
@@ -266,6 +276,7 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
         status: local.status,
         measurementNotes: parsedNotes,
         createdAt: local.createdAt,
+        isDeleted: local.isDeleted,
       );
     } catch (e) {
       // In case of parsing error, fallback
@@ -290,6 +301,7 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
         status: local.status,
         measurementNotes: {},
         createdAt: local.createdAt,
+        isDeleted: local.isDeleted,
       );
     }
   }
@@ -318,6 +330,7 @@ class OrderLocalDataSourceImpl implements OrderLocalDataSource {
         ..paymentMode = o.paymentMode
         ..status = o.status
         ..createdAt = o.createdAt
+        ..isDeleted = o.isDeleted
         ..isSynced = true
         ..lastUpdated = DateTime.now();
     }).toList();

@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../features/customers/data/models/customer_local_model.dart';
 import '../../features/templates/data/models/template_local_model.dart';
 import '../../features/orders/data/models/order_local_model.dart';
+import '../../features/payments/data/models/payment_transaction_local_model.dart';
 
 class LocalDatabase {
   late Isar _isar;
@@ -28,6 +29,7 @@ class LocalDatabase {
         CustomerLocalModelSchema,
         TemplateLocalModelSchema,
         OrderLocalModelSchema,
+        PaymentTransactionLocalModelSchema,
       ],
       directory: dir.path,
     );

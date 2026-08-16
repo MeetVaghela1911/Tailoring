@@ -30,26 +30,31 @@ const CustomerLocalModelSchema = CollectionSchema(
       type: IsarType.dateTime,
     ),
     r'email': PropertySchema(id: 3, name: r'email', type: IsarType.string),
-    r'isSynced': PropertySchema(id: 4, name: r'isSynced', type: IsarType.bool),
+    r'isDeleted': PropertySchema(
+      id: 4,
+      name: r'isDeleted',
+      type: IsarType.bool,
+    ),
+    r'isSynced': PropertySchema(id: 5, name: r'isSynced', type: IsarType.bool),
     r'lastUpdated': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'lastUpdated',
       type: IsarType.dateTime,
     ),
-    r'name': PropertySchema(id: 6, name: r'name', type: IsarType.string),
-    r'notes': PropertySchema(id: 7, name: r'notes', type: IsarType.string),
+    r'name': PropertySchema(id: 7, name: r'name', type: IsarType.string),
+    r'notes': PropertySchema(id: 8, name: r'notes', type: IsarType.string),
     r'phoneNumber': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'phoneNumber',
       type: IsarType.string,
     ),
     r'profileImageUrl': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'profileImageUrl',
       type: IsarType.string,
     ),
     r'remoteId': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'remoteId',
       type: IsarType.string,
     ),
@@ -108,6 +113,19 @@ const CustomerLocalModelSchema = CollectionSchema(
       properties: [
         IndexPropertySchema(
           name: r'isSynced',
+          type: IndexType.value,
+          caseSensitive: false,
+        ),
+      ],
+    ),
+    r'isDeleted': IndexSchema(
+      id: -786475870904832312,
+      name: r'isDeleted',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'isDeleted',
           type: IndexType.value,
           caseSensitive: false,
         ),
@@ -175,13 +193,14 @@ void _customerLocalModelSerialize(
   writer.writeString(offsets[1], object.colorHex);
   writer.writeDateTime(offsets[2], object.createdAt);
   writer.writeString(offsets[3], object.email);
-  writer.writeBool(offsets[4], object.isSynced);
-  writer.writeDateTime(offsets[5], object.lastUpdated);
-  writer.writeString(offsets[6], object.name);
-  writer.writeString(offsets[7], object.notes);
-  writer.writeString(offsets[8], object.phoneNumber);
-  writer.writeString(offsets[9], object.profileImageUrl);
-  writer.writeString(offsets[10], object.remoteId);
+  writer.writeBool(offsets[4], object.isDeleted);
+  writer.writeBool(offsets[5], object.isSynced);
+  writer.writeDateTime(offsets[6], object.lastUpdated);
+  writer.writeString(offsets[7], object.name);
+  writer.writeString(offsets[8], object.notes);
+  writer.writeString(offsets[9], object.phoneNumber);
+  writer.writeString(offsets[10], object.profileImageUrl);
+  writer.writeString(offsets[11], object.remoteId);
 }
 
 CustomerLocalModel _customerLocalModelDeserialize(
@@ -196,13 +215,14 @@ CustomerLocalModel _customerLocalModelDeserialize(
   object.createdAt = reader.readDateTime(offsets[2]);
   object.email = reader.readStringOrNull(offsets[3]);
   object.id = id;
-  object.isSynced = reader.readBool(offsets[4]);
-  object.lastUpdated = reader.readDateTimeOrNull(offsets[5]);
-  object.name = reader.readString(offsets[6]);
-  object.notes = reader.readStringOrNull(offsets[7]);
-  object.phoneNumber = reader.readString(offsets[8]);
-  object.profileImageUrl = reader.readStringOrNull(offsets[9]);
-  object.remoteId = reader.readString(offsets[10]);
+  object.isDeleted = reader.readBool(offsets[4]);
+  object.isSynced = reader.readBool(offsets[5]);
+  object.lastUpdated = reader.readDateTimeOrNull(offsets[6]);
+  object.name = reader.readString(offsets[7]);
+  object.notes = reader.readStringOrNull(offsets[8]);
+  object.phoneNumber = reader.readString(offsets[9]);
+  object.profileImageUrl = reader.readStringOrNull(offsets[10]);
+  object.remoteId = reader.readString(offsets[11]);
   return object;
 }
 
@@ -224,16 +244,18 @@ P _customerLocalModelDeserializeProp<P>(
     case 4:
       return (reader.readBool(offset)) as P;
     case 5:
-      return (reader.readDateTimeOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 6:
-      return (reader.readString(offset)) as P;
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 7:
-      return (reader.readStringOrNull(offset)) as P;
-    case 8:
       return (reader.readString(offset)) as P;
-    case 9:
+    case 8:
       return (reader.readStringOrNull(offset)) as P;
+    case 9:
+      return (reader.readString(offset)) as P;
     case 10:
+      return (reader.readStringOrNull(offset)) as P;
+    case 11:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -338,6 +360,15 @@ extension CustomerLocalModelQueryWhereSort
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         const IndexWhereClause.any(indexName: r'isSynced'),
+      );
+    });
+  }
+
+  QueryBuilder<CustomerLocalModel, CustomerLocalModel, QAfterWhere>
+  anyIsDeleted() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'isDeleted'),
       );
     });
   }
@@ -709,6 +740,58 @@ extension CustomerLocalModelQueryWhere
                 indexName: r'isSynced',
                 lower: [],
                 upper: [isSynced],
+                includeUpper: false,
+              ),
+            );
+      }
+    });
+  }
+
+  QueryBuilder<CustomerLocalModel, CustomerLocalModel, QAfterWhereClause>
+  isDeletedEqualTo(bool isDeleted) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'isDeleted', value: [isDeleted]),
+      );
+    });
+  }
+
+  QueryBuilder<CustomerLocalModel, CustomerLocalModel, QAfterWhereClause>
+  isDeletedNotEqualTo(bool isDeleted) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isDeleted',
+                lower: [],
+                upper: [isDeleted],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isDeleted',
+                lower: [isDeleted],
+                includeLower: false,
+                upper: [],
+              ),
+            );
+      } else {
+        return query
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isDeleted',
+                lower: [isDeleted],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isDeleted',
+                lower: [],
+                upper: [isDeleted],
                 includeUpper: false,
               ),
             );
@@ -1302,6 +1385,15 @@ extension CustomerLocalModelQueryFilter
           upper: upper,
           includeUpper: includeUpper,
         ),
+      );
+    });
+  }
+
+  QueryBuilder<CustomerLocalModel, CustomerLocalModel, QAfterFilterCondition>
+  isDeletedEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'isDeleted', value: value),
       );
     });
   }
@@ -2195,6 +2287,20 @@ extension CustomerLocalModelQuerySortBy
   }
 
   QueryBuilder<CustomerLocalModel, CustomerLocalModel, QAfterSortBy>
+  sortByIsDeleted() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isDeleted', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CustomerLocalModel, CustomerLocalModel, QAfterSortBy>
+  sortByIsDeletedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isDeleted', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CustomerLocalModel, CustomerLocalModel, QAfterSortBy>
   sortByIsSynced() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isSynced', Sort.asc);
@@ -2366,6 +2472,20 @@ extension CustomerLocalModelQuerySortThenBy
   }
 
   QueryBuilder<CustomerLocalModel, CustomerLocalModel, QAfterSortBy>
+  thenByIsDeleted() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isDeleted', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CustomerLocalModel, CustomerLocalModel, QAfterSortBy>
+  thenByIsDeletedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isDeleted', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CustomerLocalModel, CustomerLocalModel, QAfterSortBy>
   thenByIsSynced() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isSynced', Sort.asc);
@@ -2495,6 +2615,13 @@ extension CustomerLocalModelQueryWhereDistinct
   }
 
   QueryBuilder<CustomerLocalModel, CustomerLocalModel, QDistinct>
+  distinctByIsDeleted() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isDeleted');
+    });
+  }
+
+  QueryBuilder<CustomerLocalModel, CustomerLocalModel, QDistinct>
   distinctByIsSynced() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'isSynced');
@@ -2579,6 +2706,12 @@ extension CustomerLocalModelQueryProperty
   QueryBuilder<CustomerLocalModel, String?, QQueryOperations> emailProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'email');
+    });
+  }
+
+  QueryBuilder<CustomerLocalModel, bool, QQueryOperations> isDeletedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isDeleted');
     });
   }
 

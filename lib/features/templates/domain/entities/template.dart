@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 
 class Template extends Equatable {
   final String id;
+  final String? shopId;
   final String name;
   final String category;
   final int iconCodePoint;
@@ -11,6 +12,7 @@ class Template extends Equatable {
 
   const Template({
     required this.id,
+    this.shopId,
     required this.name,
     required this.category,
     required this.iconCodePoint,
@@ -22,6 +24,7 @@ class Template extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    shopId,
     name,
     category,
     iconCodePoint,
@@ -32,6 +35,7 @@ class Template extends Equatable {
 
   Template copyWith({
     String? id,
+    String? shopId,
     String? name,
     String? category,
     int? iconCodePoint,
@@ -41,6 +45,7 @@ class Template extends Equatable {
   }) {
     return Template(
       id: id ?? this.id,
+      shopId: shopId ?? this.shopId,
       name: name ?? this.name,
       category: category ?? this.category,
       iconCodePoint: iconCodePoint ?? this.iconCodePoint,

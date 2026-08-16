@@ -52,12 +52,12 @@ class OrderFormData extends Equatable {
     this.referenceImagePath,
     this.measurements = const {},
     this.deliveryDate,
-    this.priorityIndex = 1,
-    this.assignedTailor = 'Sarah Jenkins',
+    this.priorityIndex = 1, // 1=Normal, 2=High, 3=Urgent
+    this.assignedTailor = '',
     this.totalAmount = 0,
     this.advancePaid = 0,
     this.externalCharges = 0,
-    this.paymentMode = 0,
+    this.paymentMode = 0, // 0=Cash, 1=Card, 2=Online/UPI
     this.status = 'NOT STARTED',
     this.measurementNotes = const {},
     this.isEditing = false,
@@ -65,10 +65,24 @@ class OrderFormData extends Equatable {
   });
 
   // Convenience — display priority as string
-  String get priorityLabel => ['Normal', 'High', 'Urgent'][priorityIndex.clamp(0, 2)];
+  String get priorityLabel {
+    switch (priorityIndex) {
+      case 1: return 'Normal';
+      case 2: return 'High';
+      case 3: return 'Urgent';
+      default: return 'Normal';
+    }
+  }
 
   // Convenience — display payment mode as string
-  String get paymentModeLabel => ['Cash', 'Card', 'Online/UPI'][paymentMode.clamp(0, 2)];
+  String get paymentModeLabel {
+    switch (paymentMode) {
+      case 0: return 'Cash';
+      case 1: return 'Card';
+      case 2: return 'Online / UPI';
+      default: return 'Cash';
+    }
+  }
 
   // Balance due
   double get balanceDue => (totalAmount - advancePaid).clamp(0, double.infinity);

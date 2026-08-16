@@ -40,6 +40,7 @@ import '../../features/templates/domain/usecases/update_template_usecase.dart';
 
 import '../../features/orders/data/datasources/order_remote_data_source.dart';
 import '../../features/orders/data/datasources/order_local_data_source.dart';
+import '../../features/orders/data/datasources/lookup_remote_data_source.dart';
 import '../../features/orders/data/repositories/order_repository_impl.dart';
 import '../../features/orders/domain/repositories/order_repository.dart';
 import '../../features/orders/domain/usecases/create_order_usecase.dart';
@@ -55,6 +56,14 @@ import '../../features/onboarding/presentation/bloc/walkthrough_cubit.dart';
 
 import '../../features/sync/domain/services/cloud_sync_service.dart';
 import '../../features/sync/domain/services/sync_manager.dart';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
+import '../../core/network/network_info.dart';
+import '../../features/payments/data/datasources/payment_local_data_source.dart';
+import '../../features/payments/data/datasources/payment_remote_data_source.dart';
+import '../../features/payments/data/repositories/payment_repository_impl.dart';
+import '../../features/payments/domain/repositories/payment_repository.dart';
+import '../../features/payments/presentation/bloc/payment_bloc.dart';
 
 import '../../firebase_options.dart';
 import '../service/auth_service.dart';
@@ -108,6 +117,12 @@ Future<void> setupDependencies() async {
 
   getIt.registerLazySingleton<OrderRemoteDataSource>(() => SupabaseOrderRemoteDataSource(getIt<supabase.SupabaseClient>()));
   getIt.registerLazySingleton<OrderLocalDataSource>(() => OrderLocalDataSourceImpl(localDb: getIt<LocalDatabase>()));
+  getIt.registerLazySingleton<LookupRemoteDataSource>(() => SupabaseLookupRemoteDataSource(getIt<supabase.SupabaseClient>()));
+
+  getIt.registerLazySingleton<Connectivity>(() => Connectivity());
+  getIt.registerLazySingleton<NetworkInfo>(() => NetworkInfoImpl(getIt<Connectivity>()));
+  getIt.registerLazySingleton<PaymentLocalDataSource>(() => PaymentLocalDataSourceImpl(localDb: getIt<LocalDatabase>()));
+  getIt.registerLazySingleton<PaymentRemoteDataSource>(() => PaymentRemoteDataSourceImpl(supabaseClient: getIt<supabase.SupabaseClient>()));
 
   // --- Services ---
   getIt.registerLazySingleton<AppUpdateService>(() => AppUpdateService());
@@ -161,6 +176,15 @@ Future<void> setupDependencies() async {
         localDataSource: getIt<OrderLocalDataSource>(),
         planService: getIt<PlanService>(),
         syncManager: getIt<SyncManager>(),
+        paymentLocalDataSource: getIt<PaymentLocalDataSource>(),
+        paymentRemoteDataSource: getIt<PaymentRemoteDataSource>(),
+        networkInfo: getIt<NetworkInfo>(),
+      ));
+  getIt.registerLazySingleton<PaymentRepository>(() => PaymentRepositoryImpl(
+        localDataSource: getIt<PaymentLocalDataSource>(),
+        remoteDataSource: getIt<PaymentRemoteDataSource>(),
+        orderLocalDataSource: getIt<OrderLocalDataSource>(),
+        networkInfo: getIt<NetworkInfo>(),
       ));
 
   // --- UseCases ---
@@ -223,6 +247,12 @@ Future<void> setupDependencies() async {
       createOrderUseCase: getIt<CreateOrderUseCase>(),
       updateOrderUseCase: getIt<UpdateOrderUseCase>(),
       deleteOrderUseCase: getIt<DeleteOrderUseCase>(),
+    ),
+  );
+
+  getIt.registerFactory<PaymentBloc>(
+    () => PaymentBloc(
+      repository: getIt<PaymentRepository>(),
     ),
   );
 

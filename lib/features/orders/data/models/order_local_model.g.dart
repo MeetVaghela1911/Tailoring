@@ -72,50 +72,55 @@ const OrderLocalModelSchema = CollectionSchema(
       name: r'garmentTypes',
       type: IsarType.stringList,
     ),
-    r'isSynced': PropertySchema(id: 11, name: r'isSynced', type: IsarType.bool),
+    r'isDeleted': PropertySchema(
+      id: 11,
+      name: r'isDeleted',
+      type: IsarType.bool,
+    ),
+    r'isSynced': PropertySchema(id: 12, name: r'isSynced', type: IsarType.bool),
     r'lastUpdated': PropertySchema(
-      id: 12,
+      id: 13,
       name: r'lastUpdated',
       type: IsarType.dateTime,
     ),
     r'measurementNotesJson': PropertySchema(
-      id: 13,
+      id: 14,
       name: r'measurementNotesJson',
       type: IsarType.string,
     ),
     r'measurementsJson': PropertySchema(
-      id: 14,
+      id: 15,
       name: r'measurementsJson',
       type: IsarType.string,
     ),
     r'paymentMode': PropertySchema(
-      id: 15,
+      id: 16,
       name: r'paymentMode',
       type: IsarType.long,
     ),
     r'priorityIndex': PropertySchema(
-      id: 16,
+      id: 17,
       name: r'priorityIndex',
       type: IsarType.long,
     ),
     r'referenceImagePath': PropertySchema(
-      id: 17,
+      id: 18,
       name: r'referenceImagePath',
       type: IsarType.string,
     ),
     r'remoteId': PropertySchema(
-      id: 18,
+      id: 19,
       name: r'remoteId',
       type: IsarType.string,
     ),
     r'specialInstructions': PropertySchema(
-      id: 19,
+      id: 20,
       name: r'specialInstructions',
       type: IsarType.string,
     ),
-    r'status': PropertySchema(id: 20, name: r'status', type: IsarType.string),
+    r'status': PropertySchema(id: 21, name: r'status', type: IsarType.string),
     r'totalAmount': PropertySchema(
-      id: 21,
+      id: 22,
       name: r'totalAmount',
       type: IsarType.double,
     ),
@@ -187,6 +192,19 @@ const OrderLocalModelSchema = CollectionSchema(
       properties: [
         IndexPropertySchema(
           name: r'isSynced',
+          type: IndexType.value,
+          caseSensitive: false,
+        ),
+      ],
+    ),
+    r'isDeleted': IndexSchema(
+      id: -786475870904832312,
+      name: r'isDeleted',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'isDeleted',
           type: IndexType.value,
           caseSensitive: false,
         ),
@@ -272,17 +290,18 @@ void _orderLocalModelSerialize(
   writer.writeString(offsets[8], object.garmentPricesJson);
   writer.writeString(offsets[9], object.garmentQuantitiesJson);
   writer.writeStringList(offsets[10], object.garmentTypes);
-  writer.writeBool(offsets[11], object.isSynced);
-  writer.writeDateTime(offsets[12], object.lastUpdated);
-  writer.writeString(offsets[13], object.measurementNotesJson);
-  writer.writeString(offsets[14], object.measurementsJson);
-  writer.writeLong(offsets[15], object.paymentMode);
-  writer.writeLong(offsets[16], object.priorityIndex);
-  writer.writeString(offsets[17], object.referenceImagePath);
-  writer.writeString(offsets[18], object.remoteId);
-  writer.writeString(offsets[19], object.specialInstructions);
-  writer.writeString(offsets[20], object.status);
-  writer.writeDouble(offsets[21], object.totalAmount);
+  writer.writeBool(offsets[11], object.isDeleted);
+  writer.writeBool(offsets[12], object.isSynced);
+  writer.writeDateTime(offsets[13], object.lastUpdated);
+  writer.writeString(offsets[14], object.measurementNotesJson);
+  writer.writeString(offsets[15], object.measurementsJson);
+  writer.writeLong(offsets[16], object.paymentMode);
+  writer.writeLong(offsets[17], object.priorityIndex);
+  writer.writeString(offsets[18], object.referenceImagePath);
+  writer.writeString(offsets[19], object.remoteId);
+  writer.writeString(offsets[20], object.specialInstructions);
+  writer.writeString(offsets[21], object.status);
+  writer.writeDouble(offsets[22], object.totalAmount);
 }
 
 OrderLocalModel _orderLocalModelDeserialize(
@@ -304,17 +323,18 @@ OrderLocalModel _orderLocalModelDeserialize(
   object.garmentQuantitiesJson = reader.readString(offsets[9]);
   object.garmentTypes = reader.readStringList(offsets[10]) ?? [];
   object.id = id;
-  object.isSynced = reader.readBool(offsets[11]);
-  object.lastUpdated = reader.readDateTimeOrNull(offsets[12]);
-  object.measurementNotesJson = reader.readString(offsets[13]);
-  object.measurementsJson = reader.readString(offsets[14]);
-  object.paymentMode = reader.readLong(offsets[15]);
-  object.priorityIndex = reader.readLong(offsets[16]);
-  object.referenceImagePath = reader.readStringOrNull(offsets[17]);
-  object.remoteId = reader.readString(offsets[18]);
-  object.specialInstructions = reader.readStringOrNull(offsets[19]);
-  object.status = reader.readString(offsets[20]);
-  object.totalAmount = reader.readDouble(offsets[21]);
+  object.isDeleted = reader.readBool(offsets[11]);
+  object.isSynced = reader.readBool(offsets[12]);
+  object.lastUpdated = reader.readDateTimeOrNull(offsets[13]);
+  object.measurementNotesJson = reader.readString(offsets[14]);
+  object.measurementsJson = reader.readString(offsets[15]);
+  object.paymentMode = reader.readLong(offsets[16]);
+  object.priorityIndex = reader.readLong(offsets[17]);
+  object.referenceImagePath = reader.readStringOrNull(offsets[18]);
+  object.remoteId = reader.readString(offsets[19]);
+  object.specialInstructions = reader.readStringOrNull(offsets[20]);
+  object.status = reader.readString(offsets[21]);
+  object.totalAmount = reader.readDouble(offsets[22]);
   return object;
 }
 
@@ -350,24 +370,26 @@ P _orderLocalModelDeserializeProp<P>(
     case 11:
       return (reader.readBool(offset)) as P;
     case 12:
-      return (reader.readDateTimeOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 13:
-      return (reader.readString(offset)) as P;
+      return (reader.readDateTimeOrNull(offset)) as P;
     case 14:
       return (reader.readString(offset)) as P;
     case 15:
-      return (reader.readLong(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 16:
       return (reader.readLong(offset)) as P;
     case 17:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 18:
-      return (reader.readString(offset)) as P;
-    case 19:
       return (reader.readStringOrNull(offset)) as P;
-    case 20:
+    case 19:
       return (reader.readString(offset)) as P;
+    case 20:
+      return (reader.readStringOrNull(offset)) as P;
     case 21:
+      return (reader.readString(offset)) as P;
+    case 22:
       return (reader.readDouble(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -468,6 +490,14 @@ extension OrderLocalModelQueryWhereSort
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         const IndexWhereClause.any(indexName: r'isSynced'),
+      );
+    });
+  }
+
+  QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterWhere> anyIsDeleted() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'isDeleted'),
       );
     });
   }
@@ -894,6 +924,58 @@ extension OrderLocalModelQueryWhere
                 indexName: r'isSynced',
                 lower: [],
                 upper: [isSynced],
+                includeUpper: false,
+              ),
+            );
+      }
+    });
+  }
+
+  QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterWhereClause>
+  isDeletedEqualTo(bool isDeleted) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'isDeleted', value: [isDeleted]),
+      );
+    });
+  }
+
+  QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterWhereClause>
+  isDeletedNotEqualTo(bool isDeleted) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isDeleted',
+                lower: [],
+                upper: [isDeleted],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isDeleted',
+                lower: [isDeleted],
+                includeLower: false,
+                upper: [],
+              ),
+            );
+      } else {
+        return query
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isDeleted',
+                lower: [isDeleted],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isDeleted',
+                lower: [],
+                upper: [isDeleted],
                 includeUpper: false,
               ),
             );
@@ -2335,6 +2417,15 @@ extension OrderLocalModelQueryFilter
   }
 
   QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterFilterCondition>
+  isDeletedEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'isDeleted', value: value),
+      );
+    });
+  }
+
+  QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterFilterCondition>
   isSyncedEqualTo(bool value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(
@@ -3639,6 +3730,20 @@ extension OrderLocalModelQuerySortBy
   }
 
   QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterSortBy>
+  sortByIsDeleted() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isDeleted', Sort.asc);
+    });
+  }
+
+  QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterSortBy>
+  sortByIsDeletedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isDeleted', Sort.desc);
+    });
+  }
+
+  QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterSortBy>
   sortByIsSynced() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isSynced', Sort.asc);
@@ -3947,6 +4052,20 @@ extension OrderLocalModelQuerySortThenBy
   }
 
   QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterSortBy>
+  thenByIsDeleted() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isDeleted', Sort.asc);
+    });
+  }
+
+  QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterSortBy>
+  thenByIsDeletedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isDeleted', Sort.desc);
+    });
+  }
+
+  QueryBuilder<OrderLocalModel, OrderLocalModel, QAfterSortBy>
   thenByIsSynced() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isSynced', Sort.asc);
@@ -4192,6 +4311,13 @@ extension OrderLocalModelQueryWhereDistinct
   }
 
   QueryBuilder<OrderLocalModel, OrderLocalModel, QDistinct>
+  distinctByIsDeleted() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isDeleted');
+    });
+  }
+
+  QueryBuilder<OrderLocalModel, OrderLocalModel, QDistinct>
   distinctByIsSynced() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'isSynced');
@@ -4365,6 +4491,12 @@ extension OrderLocalModelQueryProperty
   garmentTypesProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'garmentTypes');
+    });
+  }
+
+  QueryBuilder<OrderLocalModel, bool, QQueryOperations> isDeletedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isDeleted');
     });
   }
 

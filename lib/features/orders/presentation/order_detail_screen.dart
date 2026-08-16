@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -20,6 +21,12 @@ import 'bloc/order_state.dart';
 import '../../../core/services/receipt_pdf_service.dart';
 import '../../../core/utility/dependency_injection.dart';
 import 'bloc/order_wizard_bloc.dart';
+import '../data/datasources/lookup_remote_data_source.dart';
+import '../data/models/payment_mode_model.dart';
+import '../../templates/presentation/bloc/template_bloc.dart';
+import '../../templates/presentation/bloc/template_state.dart';
+import '../../payments/presentation/widgets/record_payment_sheet.dart';
+import '../../payments/presentation/bloc/payment_bloc.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final OrderEntity order;
@@ -34,6 +41,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   late final TextEditingController _instructionsCtrl;
   late final TextEditingController _advanceCtrl;
 
+  List<PaymentModeModel> _remotePaymentModes = [];
+
   static const _statuses = ['NOT STARTED', 'IN PROGRESS', 'READY', 'OVERDUE', 'DELIVERED'];
 
   @override
@@ -42,6 +51,57 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     _order = widget.order;
     _instructionsCtrl = TextEditingController(text: _order.specialInstructions);
     _advanceCtrl = TextEditingController(text: _order.advancePaid.toStringAsFixed(0));
+    _loadPaymentModes();
+  }
+
+  Future<void> _loadPaymentModes() async {
+    try {
+      final modes = await getIt<LookupRemoteDataSource>().getPaymentModes();
+      if (mounted && modes.isNotEmpty) {
+        setState(() {
+          _remotePaymentModes = modes;
+        });
+      }
+    } catch (_) {}
+  }
+
+  String _getValueFlexible(Map<String, String> map, String key) {
+    if (map.containsKey(key)) return map[key]!;
+    final trimmedKey = key.trim().toLowerCase();
+    for (final entry in map.entries) {
+      if (entry.key.trim().toLowerCase() == trimmedKey) {
+        return entry.value;
+      }
+    }
+    return '';
+  }
+
+  int _getQtyFlexible(Map<String, int> map, String key) {
+    if (map.containsKey(key)) return map[key]!;
+    final trimmedKey = key.trim().toLowerCase();
+    for (final entry in map.entries) {
+      if (entry.key.trim().toLowerCase() == trimmedKey) {
+        return entry.value;
+      }
+    }
+    return 1;
+  }
+
+  double _getPriceFlexible(Map<String, double> map, String key) {
+    if (map.containsKey(key)) return map[key]!;
+    final trimmedKey = key.trim().toLowerCase();
+    for (final entry in map.entries) {
+      if (entry.key.trim().toLowerCase() == trimmedKey) {
+        return entry.value;
+      }
+    }
+    return 0.0;
+  }
+
+  String _getPaymentModeText(int mode) {
+    final match = _remotePaymentModes.where((m) => m.id == mode).firstOrNull;
+    if (match != null) return match.name;
+    return getLocalizedPaymentMode(mode, AppLocalizations.of(context));
   }
 
   @override
@@ -98,7 +158,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             setState(() {
               _order = state.order;
               _instructionsCtrl.text = _order.specialInstructions;
-              _advanceCtrl.text = _order.advancePaid.toStringAsFixed(0);
             });
           }
           showAppSnackBar(context, message: AppLocalizations.of(context).operationSuccessful);
@@ -123,8 +182,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             o = updated;
           }
         }
-        return Scaffold(
-        backgroundColor: c.background,
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) {
+            if (didPop) return;
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(AppRoutes.home);
+            }
+          },
+          child: Scaffold(
+            backgroundColor: c.background,
         body: Stack(
           children: [
             Positioned(top: 0, left: 0, right: 0,
@@ -173,13 +242,30 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     editLabel: AppLocalizations.of(context).editOrder,
                     saveLabel: AppLocalizations.of(context).saveChanges,
                     onEditSaveTap: () {
+                      final templateState = context.read<TemplateBloc?>()?.state;
+                      final templates = templateState is TemplatesLoaded ? templateState.templates : null;
+
+                      final resolvedGarmentTypes = o.garmentTypes.map((g) {
+                        if (templates != null) {
+                          final match = templates.where(
+                            (t) => t.id == g || t.name == g || t.id.toLowerCase() == g.toLowerCase() || t.name.toLowerCase() == g.toLowerCase(),
+                          ).firstOrNull;
+                          if (match != null) return match.id;
+                        }
+                        final itemMatch = o.items.where((i) => (i.garmentName == g || i.templateId == g) && i.templateId != null && i.templateId!.isNotEmpty).firstOrNull;
+                        if (itemMatch != null && itemMatch.templateId != null && itemMatch.templateId!.isNotEmpty) {
+                          return itemMatch.templateId!;
+                        }
+                        return g;
+                      }).toList();
+
                       final formData = OrderFormData(
                         isEditing: true,
                         existingOrderRef: o.id,
                         customerName: o.customerName ?? '',
                         customerPhone: o.customerPhone ?? '',
                         customerId: o.customerId,
-                        garmentTypes: o.garmentTypes,
+                        garmentTypes: resolvedGarmentTypes,
                         garmentQuantities: o.garmentQuantities,
                         garmentPrices: o.garmentPrices,
                         specialInstructions: o.specialInstructions,
@@ -204,28 +290,37 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     },
                     onDeleteTap: () => _onDelete(c, isDark),
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
           ],
         ),
-      );
-    },
-  );
+      ),
+    );
+  },
+);
 }
 
   Widget _buildHeader(AppColorScheme c, OrderEntity o) {
     return Row(
       children: [
-        const AppBackButton(),
+        AppBackButton(
+          onTap: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(AppRoutes.home);
+            }
+          },
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(AppLocalizations.of(context).orderDetailTitle.toUpperCase(),
                 style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.bold,
                     letterSpacing: 1.2, color: c.textDark.withValues(alpha: 0.6))),
-            Text('#${o.id.substring(0, 8).toUpperCase()}',
+            Text(o.orderNumber != null ? '#${o.orderNumber}' : '#${o.id.length > 8 ? o.id.substring(0, 8).toUpperCase() : o.id.toUpperCase()}',
                 style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold,
                     color: c.textDark, height: 1.2)),
           ]),
@@ -244,22 +339,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 color: Color(0xFF25D366),
                 size: 20,
               ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () => ReceiptPdfService.showWhatsAppReceiptBottomSheet(context, o),
-          child: Container(
-            width: 40, height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-                color: c.colorPrimary.withValues(alpha: 0.12),
-                shape: BoxShape.circle),
-            child: Icon(
-              Icons.picture_as_pdf_outlined,
-              color: c.colorPrimary,
-              size: 20,
             ),
           ),
         ),
@@ -312,13 +391,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 10),
               ),
               onPressed: () {
-                final upd = o.copyWith(advancePaid: o.totalAmount);
-                context.read<OrderBloc>().add(UpdateOrder(upd));
-                showAppSnackBar(context, message: 'Payment marked as Completed!');
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (ctx) => BlocProvider<PaymentBloc>(
+                    create: (_) => getIt<PaymentBloc>(),
+                    child: RecordPaymentSheet(order: o),
+                  ),
+                );
               },
-              icon: const Icon(Icons.check_circle_outline, size: 18),
+              icon: const Icon(Icons.payment, size: 18),
               label: Text(
-                'Mark Payment Completed (₹${o.balanceDue.toStringAsFixed(0)})',
+                'Record Payment (₹${o.balanceDue.toStringAsFixed(0)})',
                 style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.bold),
               ),
             ),
@@ -395,14 +480,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               ),
               onPressed: () {
                 Navigator.pop(ctx);
-                final upd = o.copyWith(
-                  status: 'DELIVERED',
-                  advancePaid: o.totalAmount,
-                );
+                final upd = o.copyWith(status: 'DELIVERED');
                 context.read<OrderBloc>().add(UpdateOrder(upd));
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (sheetCtx) => BlocProvider<PaymentBloc>(
+                    create: (_) => getIt<PaymentBloc>(),
+                    child: RecordPaymentSheet(order: upd),
+                  ),
+                );
               },
               child: Text(
-                'Payment Completed',
+                'Record Payment',
                 style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ),
@@ -498,25 +589,45 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    o.referenceImagePath!,
-                    width: double.infinity,
-                    height: 200,
-                    fit: BoxFit.cover,
-                    errorBuilder: (ctx, _, _) => Container(
-                      width: double.infinity,
-                      height: 150,
-                      color: c.divider.withValues(alpha: 0.1),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.broken_image_outlined, color: c.gray, size: 32),
-                          const SizedBox(height: 8),
-                          Text(AppLocalizations.of(context).imageFailed, style: GoogleFonts.poppins(fontSize: 12, color: c.gray)),
-                        ],
-                      ),
-                    ),
-                  ),
+                  child: (o.referenceImagePath!.startsWith('http://') || o.referenceImagePath!.startsWith('https://'))
+                      ? Image.network(
+                          o.referenceImagePath!,
+                          width: double.infinity,
+                          height: 200,
+                          fit: BoxFit.cover,
+                          errorBuilder: (ctx, _, _) => Container(
+                            width: double.infinity,
+                            height: 150,
+                            color: c.divider.withValues(alpha: 0.1),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.broken_image_outlined, color: c.gray, size: 32),
+                                const SizedBox(height: 8),
+                                Text(AppLocalizations.of(context).imageFailed, style: GoogleFonts.poppins(fontSize: 12, color: c.gray)),
+                              ],
+                            ),
+                          ),
+                        )
+                      : Image.file(
+                          File(o.referenceImagePath!),
+                          width: double.infinity,
+                          height: 200,
+                          fit: BoxFit.cover,
+                          errorBuilder: (ctx, _, _) => Container(
+                            width: double.infinity,
+                            height: 150,
+                            color: c.divider.withValues(alpha: 0.1),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.broken_image_outlined, color: c.gray, size: 32),
+                                const SizedBox(height: 8),
+                                Text(AppLocalizations.of(context).imageFailed, style: GoogleFonts.poppins(fontSize: 12, color: c.gray)),
+                              ],
+                            ),
+                          ),
+                        ),
                 ),
                 Positioned(
                   bottom: 8,
@@ -550,15 +661,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           const SizedBox(height: 8),
           Wrap(
             spacing: 8, runSpacing: 8,
-            children: o.garmentTypes.map((g) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                  color: c.colorPrimary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: c.colorPrimary.withValues(alpha: 0.2))),
-              child: Text(g, style: GoogleFonts.poppins(fontSize: 12,
-                  fontWeight: FontWeight.bold, color: c.colorPrimary)),
-            )).toList(),
+            children: o.garmentTypes.map((g) {
+              final tState = context.read<TemplateBloc?>()?.state;
+              final tmpls = tState is TemplatesLoaded ? tState.templates : null;
+              final name = resolveGarmentName(g, AppLocalizations.of(context), items: o.items, templates: tmpls);
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                    color: c.colorPrimary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: c.colorPrimary.withValues(alpha: 0.2))),
+                child: Text(name, style: GoogleFonts.poppins(fontSize: 12,
+                    fontWeight: FontWeight.bold, color: c.colorPrimary)),
+              );
+            }).toList(),
           ),
           const SizedBox(height: 16),
         ],
@@ -577,11 +693,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _micro(c, AppLocalizations.of(context).detailsByGarment.toUpperCase()),
           const SizedBox(height: 12),
           ...o.garmentTypes.map((g) {
-            final mJson = o.measurements[g] ?? '';
+            final mJson = _getValueFlexible(o.measurements, g);
             final mParts = _parseMeasurements(mJson);
-            final note = o.measurementNotes[g] ?? '';
-            
-            if (mParts.isEmpty && note.isEmpty) return const SizedBox();
+            final note = _getValueFlexible(o.measurementNotes, g);
+            final qty = _getQtyFlexible(o.garmentQuantities, g);
+            final price = _getPriceFlexible(o.garmentPrices, g);
+
+            final tState = context.read<TemplateBloc?>()?.state;
+            final tmpls = tState is TemplatesLoaded ? tState.templates : null;
+            final name = resolveGarmentName(g, AppLocalizations.of(context), items: o.items, templates: tmpls);
 
             return Container(
               margin: const EdgeInsets.only(bottom: 16),
@@ -598,8 +718,29 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     children: [
                       Icon(Icons.label_important_outline, size: 14, color: c.colorPrimary),
                       const SizedBox(width: 8),
-                      Text(getLocalizedTemplateName(g, g, AppLocalizations.of(context)).toUpperCase(), style: GoogleFonts.poppins(
+                      Text(name.toUpperCase(), style: GoogleFonts.poppins(
                         fontSize: 12, fontWeight: FontWeight.bold, color: c.colorPrimary, letterSpacing: 0.5)),
+                      const Spacer(),
+                      if (qty > 0) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: c.colorPrimary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            'Qty: $qty',
+                            style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.bold, color: c.colorPrimary),
+                          ),
+                        ),
+                        if (price > 0) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '₹${price.toStringAsFixed(0)}',
+                            style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600, color: c.textDark),
+                          ),
+                        ],
+                      ],
                     ],
                   ),
                   if (mParts.isNotEmpty) ...[
@@ -608,24 +749,32 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       spacing: 16,
                       runSpacing: 12,
                       children: mParts.entries.map((me) => SizedBox(
-                        width: 130, // Fixed width for grid item
+                        width: 130,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(getLocalizedMeasurementField(me.key, AppLocalizations.of(context)), style: GoogleFonts.poppins(fontSize: 10, color: c.gray, letterSpacing: 0.3)),
-                            Text(me.value, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold, color: c.textDark)),
+                            Text(me.key, style: GoogleFonts.poppins(fontSize: 11, color: c.gray)),
+                            const SizedBox(height: 2),
+                            Text(me.value, style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: c.textDark)),
                           ],
                         ),
                       )).toList(),
                     ),
+                  ] else ...[
+                    const SizedBox(height: 6),
+                    Text('— ${AppLocalizations.of(context).none}', style: GoogleFonts.poppins(fontSize: 12, color: c.gray, fontStyle: FontStyle.italic)),
                   ],
                   if (note.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    if (mParts.isNotEmpty) Divider(color: c.divider.withValues(alpha: 0.1)),
                     const SizedBox(height: 8),
-                    _micro(c, AppLocalizations.of(context).note.toUpperCase()),
-                    const SizedBox(height: 4),
-                    Text(note, style: GoogleFonts.poppins(fontSize: 13, color: c.textDark)),
+                    Row(
+                      children: [
+                        Icon(Icons.notes, size: 13, color: c.gray),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(note, style: GoogleFonts.poppins(fontSize: 12, color: c.textDark.withValues(alpha: 0.8), fontStyle: FontStyle.italic)),
+                        ),
+                      ],
+                    ),
                   ],
                 ],
               ),
@@ -638,12 +787,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Map<String, String> _parseMeasurements(String str) {
     if (str.isEmpty) return {};
-    final parts = str.split(',');
+    final parts = str.split(RegExp(r',\s*'));
     final result = <String, String>{};
     for (var p in parts) {
       final kv = p.split(':');
       if (kv.length == 2) {
-        result[kv[0].trim()] = kv[1].trim();
+        final key = kv[0].trim();
+        final val = kv[1].trim();
+        if (key != '__UNIT__') {
+          result[key] = val;
+        }
       }
     }
     return result;
@@ -674,15 +827,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         _micro(c, AppLocalizations.of(context).priorityLabel.toUpperCase()),
         const SizedBox(height: 8),
         _priorityBadge(c, o.priorityIndex),
-        const SizedBox(height: 20),
-        _micro(c, AppLocalizations.of(context).assignedTailorLabel.toUpperCase()),
-        const SizedBox(height: 8),
-        Row(children: [
-          Icon(Icons.person_pin_outlined, size: 15, color: c.colorPrimary),
-          const SizedBox(width: 8),
-          Text(o.assignedTailor, style: GoogleFonts.poppins(fontSize: 14,
-              fontWeight: FontWeight.w600, color: c.textDark)),
-        ]),
       ])),
     ]);
   }
@@ -699,6 +843,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   color: c.colorPrimary)),
         ]),
         const SizedBox(height: 12),
+        if (o.externalCharges > 0) ...[
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            _micro(c, AppLocalizations.of(context).externalCharges.toUpperCase()),
+            Text('₹${o.externalCharges.toStringAsFixed(2)}',
+                style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: c.textDark)),
+          ]),
+          const SizedBox(height: 12),
+        ],
         Divider(color: c.divider.withValues(alpha: 0.5)),
         const SizedBox(height: 12),
         _micro(c, AppLocalizations.of(context).advancePaidLabel.toUpperCase()),
@@ -732,9 +884,43 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         Row(children: [
           _payIcon(o.paymentMode),
           const SizedBox(width: 8),
-          Text(getLocalizedPaymentMode(o.paymentMode, AppLocalizations.of(context)), style: GoogleFonts.poppins(fontSize: 14,
+          Text(_getPaymentModeText(o.paymentMode), style: GoogleFonts.poppins(fontSize: 14,
               fontWeight: FontWeight.w600, color: c.textDark)),
         ]),
+        const SizedBox(height: 20),
+
+        // Action Button: Record Payment
+        if (o.balanceDue > 0) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: c.colorPrimary,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: () async {
+                final result = await showModalBottomSheet<bool>(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (ctx) => BlocProvider<PaymentBloc>(
+                    create: (_) => getIt<PaymentBloc>(),
+                    child: RecordPaymentSheet(order: o),
+                  ),
+                );
+                if (result == true && mounted) {
+                  context.read<OrderBloc>().add(LoadOrders());
+                }
+              },
+              icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
+              label: Text(
+                'Record Payment',
+                style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
       ])),
     ]);
   }
@@ -756,6 +942,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           letterSpacing: 0.8, color: c.gray));
 
   Widget _card(AppColorScheme c, bool isDark, {required Widget child}) => Container(
+        width: double.infinity,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: isDark ? c.cardDark : Colors.white,
@@ -770,7 +957,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget _priorityBadge(AppColorScheme c, int priorityIndex) {
     final l10n = AppLocalizations.of(context);
     final localizedP = getLocalizedPriority(priorityIndex, l10n);
-    final col = priorityIndex == 2 ? c.red : (priorityIndex == 1 ? c.colorPrimary : c.gray);
+    final col = priorityIndex == 3 ? c.red : (priorityIndex == 2 ? c.colorPrimary : c.gray);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -786,8 +973,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Widget _payIcon(int paymentIndex) {
     IconData icon; Color col;
-    if (paymentIndex == 0) { icon = Icons.attach_money; col = const Color(0xFF2E7D32); }
-    else if (paymentIndex == 1) { icon = Icons.credit_card; col = const Color(0xFF1565C0); }
+    if (paymentIndex == 1 || paymentIndex == 0) { icon = Icons.attach_money; col = const Color(0xFF2E7D32); }
+    else if (paymentIndex == 2) { icon = Icons.credit_card; col = const Color(0xFF1565C0); }
     else { icon = Icons.qr_code_scanner; col = const Color(0xFF6A1B9A); }
     return Container(
       padding: const EdgeInsets.all(8),

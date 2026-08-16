@@ -22,7 +22,7 @@ class SyncManager {
   
   final Connectivity _connectivity;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  bool _isSyncing = false;
+  bool get isSyncing => _activeSyncFuture != null;
 
   SyncManager({
     required this.customerLocal,
@@ -49,16 +49,37 @@ class SyncManager {
     _connectivitySubscription?.cancel();
   }
 
+  Future<void>? _activeSyncFuture;
+
   /// Master function for two-way synchronization
   Future<void> syncData() async {
-    if (_isSyncing) return;
-    if (planService.currentPlan == AppPlan.free) return;
+    if (_activeSyncFuture != null) {
+      debugPrint('SyncManager: Sync already in progress, awaiting existing sync...');
+      return _activeSyncFuture!;
+    }
+
+    if (planService.currentPlan == AppPlan.free) {
+      debugPrint('SyncManager: User is on Free plan. Cloud sync skipped.');
+      return;
+    }
     
     final results = await _connectivity.checkConnectivity();
-    if (results.contains(ConnectivityResult.none)) return; // Offline
+    if (results.contains(ConnectivityResult.none)) {
+      debugPrint('SyncManager: Device is offline. Sync postponed.');
+      return;
+    }
 
+    _activeSyncFuture = _performSync();
     try {
-      _isSyncing = true;
+      await _activeSyncFuture;
+    } finally {
+      _activeSyncFuture = null;
+    }
+  }
+
+  Future<void> _performSync() async {
+    try {
+      debugPrint('SyncManager: Starting syncData for Premium user...');
 
       // 1. PUSH local changes to remote
       await _pushUnsyncedData();
@@ -66,11 +87,10 @@ class SyncManager {
       // 2. PULL remote changes to local DB
       await _pullRemoteData();
 
+      debugPrint('SyncManager: Synchronization completed successfully.');
     } catch (e, stackTrace) {
       debugPrint('SyncManager: syncData Error: $e');
       debugPrint('SyncManager: syncData StackTrace: $stackTrace');
-    } finally {
-      _isSyncing = false;
     }
   }
 

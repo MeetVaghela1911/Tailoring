@@ -26,7 +26,7 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
   @override
   Future<List<CustomerModel>> getCustomers() async {
     try {
-      final customers = await localDb.isar.customerLocalModels.where().findAll();
+      final customers = await localDb.isar.customerLocalModels.filter().isDeletedEqualTo(false).findAll();
       
       // Auto-heal any corrupted legacy records with empty remoteId
       final corrupted = customers.where((c) => c.remoteId.trim().isEmpty).toList();
@@ -48,7 +48,7 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
   @override
   Future<CustomerModel?> getCustomerById(String id) async {
     if (id.trim().isEmpty) return null;
-    final customer = await localDb.isar.customerLocalModels.filter().remoteIdEqualTo(id).findFirst();
+    final customer = await localDb.isar.customerLocalModels.filter().remoteIdEqualTo(id).isDeletedEqualTo(false).findFirst();
     if (customer == null) return null;
     return _toCustomerModel(customer);
   }
@@ -68,6 +68,7 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
       ..createdAt = customer.createdAt
       ..colorHex = customer.colorHex
       ..profileImageUrl = customer.profileImageUrl
+      ..isDeleted = customer.isDeleted
       ..isSynced = false 
       ..lastUpdated = DateTime.now();
 
@@ -101,6 +102,7 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
       ..notes = customer.notes
       ..colorHex = customer.colorHex
       ..profileImageUrl = customer.profileImageUrl
+      ..isDeleted = customer.isDeleted
       ..isSynced = false
       ..lastUpdated = DateTime.now();
 
@@ -134,7 +136,13 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
     if (id.trim().isEmpty) return;
     try {
       await localDb.isar.writeTxn(() async {
-        await localDb.isar.customerLocalModels.filter().remoteIdEqualTo(id).deleteAll();
+        final existingLocal = await localDb.isar.customerLocalModels.filter().remoteIdEqualTo(id).findFirst();
+        if (existingLocal != null) {
+          existingLocal.isDeleted = true;
+          existingLocal.isSynced = false;
+          existingLocal.lastUpdated = DateTime.now();
+          await localDb.isar.customerLocalModels.put(existingLocal);
+        }
 
         // Clear customerId reference on associated orders while preserving order details
         final matchingOrders = await localDb.isar.orderLocalModels
@@ -182,6 +190,7 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
       createdAt: local.createdAt,
       colorHex: local.colorHex,
       profileImageUrl: local.profileImageUrl,
+      isDeleted: local.isDeleted,
     );
   }
 
@@ -198,6 +207,7 @@ class CustomerLocalDataSourceImpl implements CustomerLocalDataSource {
         ..createdAt = c.createdAt
         ..colorHex = c.colorHex
         ..profileImageUrl = c.profileImageUrl
+        ..isDeleted = c.isDeleted
         ..isSynced = true
         ..lastUpdated = DateTime.now();
     }).toList();

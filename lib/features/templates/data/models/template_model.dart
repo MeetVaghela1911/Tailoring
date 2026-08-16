@@ -3,6 +3,7 @@ import '../../domain/entities/template.dart';
 class TemplateModel extends Template {
   const TemplateModel({
     required super.id,
+    super.shopId,
     required super.name,
     required super.category,
     required super.iconCodePoint,
@@ -14,6 +15,7 @@ class TemplateModel extends Template {
   factory TemplateModel.fromJson(Map<String, dynamic> json) {
     return TemplateModel(
       id: json['id'] as String,
+      shopId: json['shop_id'] as String?,
       name: json['name'] as String,
       category: json['category'] as String,
       iconCodePoint: json['icon_code_point'] as int,
@@ -26,6 +28,7 @@ class TemplateModel extends Template {
   Map<String, dynamic> toJson() {
     return {
       if (id.isNotEmpty) 'id': id,
+      if (shopId != null && shopId!.isNotEmpty) 'shop_id': shopId,
       'name': name,
       'category': category,
       'icon_code_point': iconCodePoint,
@@ -38,6 +41,7 @@ class TemplateModel extends Template {
   Template toEntity() {
     return Template(
       id: id,
+      shopId: shopId,
       name: name,
       category: category,
       iconCodePoint: iconCodePoint,
@@ -50,6 +54,7 @@ class TemplateModel extends Template {
   factory TemplateModel.fromEntity(Template entity) {
     return TemplateModel(
       id: entity.id,
+      shopId: entity.shopId,
       name: entity.name,
       category: entity.category,
       iconCodePoint: entity.iconCodePoint,

@@ -8,6 +8,7 @@ import '../../../core/theme/common_methods.dart';
 import 'package:tailoring_flutter/l10n/app_localizations.dart';
 import '../../../routes/app_router.dart';
 import '../domain/entities/customer.dart';
+import '../../../core/presentation/widgets/skeleton_loader.dart';
 import 'bloc/customer_bloc.dart';
 import 'bloc/customer_event.dart';
 import 'bloc/customer_state.dart';
@@ -157,12 +158,16 @@ class _CustomersListScreenState extends State<CustomersListScreen> {
                     child: BlocBuilder<CustomerBloc, CustomerState>(
                       builder: (context, state) {
                         if (state is CustomerLoading) {
-                          return SingleChildScrollView(
+                          return ListView.builder(
                             physics: const AlwaysScrollableScrollPhysics(),
-                            child: SizedBox(
-                              height: MediaQuery.of(context).size.height * 0.4,
-                              child: Center(child: CircularProgressIndicator(color: c.colorPrimary)),
-                            ),
+                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
+                            itemCount: 8,
+                            itemBuilder: (context, index) {
+                              return const Padding(
+                                padding: EdgeInsets.only(bottom: 12),
+                                child: SkeletonListTile(),
+                              );
+                            },
                           );
                         } else if (state is CustomersLoaded) {
                           final filtered = _filter(state.customers);

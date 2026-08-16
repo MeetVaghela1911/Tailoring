@@ -12,6 +12,7 @@ import '../../../core/theme/common_methods.dart';
 import 'package:tailoring_flutter/l10n/app_localizations.dart';
 import '../../../routes/app_router.dart';
 import '../domain/entities/template.dart';
+import '../../../core/presentation/widgets/skeleton_loader.dart';
 import 'bloc/template_bloc.dart';
 import 'bloc/template_event.dart';
 import 'bloc/template_state.dart';
@@ -118,6 +119,11 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                     setState(() {
                       _isQuickStartExpanded = false;
                     });
+                  } else if (currentCount < 2 && !_isQuickStartExpanded) {
+                    // Auto-expand if they drop below 2 so it doesn't get stuck closed.
+                    setState(() {
+                      _isQuickStartExpanded = true;
+                    });
                   }
 
                   _previousTemplateCount = currentCount;
@@ -135,14 +141,16 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                 child: BlocBuilder<TemplateBloc, TemplateState>(
                   builder: (context, state) {
                     if (state is TemplateLoading) {
-                      return SingleChildScrollView(
+                      return ListView.builder(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        child: SizedBox(
-                          height: MediaQuery.of(context).size.height * 0.5,
-                          child: Center(
-                            child: CircularProgressIndicator(color: c.colorPrimary),
-                          ),
-                        ),
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 100),
+                        itemCount: 6,
+                        itemBuilder: (context, index) {
+                          return const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: SkeletonCard(height: 140, margin: EdgeInsets.zero),
+                          );
+                        },
                       );
                     } else if (state is TemplatesLoaded) {
                       final filterOptions = _getFilterOptions(state.templates);

@@ -90,7 +90,7 @@ void main() {
     expect(find.text('1234567890'), findsOneWidget);
     expect(find.text('Shirt'), findsOneWidget);
     expect(find.text('Large buttons'), findsOneWidget);
-    expect(find.text('Master Ji'), findsOneWidget);
+    expect(find.text('Master Ji'), findsNothing);
     
     expect(find.textContaining('500.00'), findsAtLeastNWidgets(1));
     expect(find.textContaining('200.00'), findsOneWidget);
@@ -123,10 +123,16 @@ void main() {
   });
 
   testWidgets('renders overdue status badge', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
     final overdueOrder = testOrder.copyWith(
       deliveryDate: DateTime.now().subtract(const Duration(days: 1)),
       status: 'OVERDUE',
     );
+
+    when(() => mockOrderBloc.state).thenReturn(OrdersLoaded([overdueOrder]));
 
     await tester.pumpWidget(createWidgetUnderTest(order: overdueOrder));
     await tester.pumpAndSettle();
